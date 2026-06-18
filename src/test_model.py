@@ -87,6 +87,19 @@ def test_value_detection():
     assert not v2["value"]
 
 
+def test_bet_grading():
+    from slate import _won
+    assert _won("home", "", 2, 0)[0] == "win"
+    assert _won("home", "", 0, 1)[0] == "loss"
+    assert _won("away", "", 0, 1)[0] == "win"
+    assert _won("draw", "", 1, 1)[0] == "win"
+    assert _won("draw", "", 1, 0)[0] == "loss"
+    assert _won("over", 2.5, 2, 1)[0] == "win"      # 3 goals > 2.5
+    assert _won("over", 2.5, 1, 1)[0] == "loss"     # 2 goals < 2.5
+    assert _won("under", 2.5, 1, 1)[0] == "win"
+    assert _won("under", 3.0, 1, 2)[0] == "push"    # exactly on an integer line
+
+
 if __name__ == "__main__":
     import sys
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

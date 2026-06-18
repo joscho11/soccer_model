@@ -1,3 +1,5 @@
+.env
+.env.*
 data/*.csv
 data/model.json
 __pycache__/

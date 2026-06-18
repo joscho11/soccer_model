@@ -65,6 +65,8 @@ soccer_model/
     predict.py         # CLI (fit / match / fixtures / rankings / teams)
     backtest.py        # walk-forward, no-leakage calibration backtest
     calibrate.py       # fit + validate the over/under recalibration (Platt)
+    slate.py           # live workflow: board / log / grade / report (CLV tracking)
+    odds.py            # The Odds API: auto value-scan + auto-logging (free tier)
     test_model.py      # hermetic sanity tests
   data/                # downloaded csvs + cached model.json (gitignore-able)
 ```
@@ -117,6 +119,78 @@ space; the base rate was already right). Validated out of sample, it cuts O/U
 parameters are written to `model.json`. Even calibrated, **O/U barely beats
 climatology** — international totals are a near-efficient market — so calibration
 here is about honest staking probabilities, not a goldmine.
+
+## Live workflow (`slate.py`)
+
+The model is calibrated; the missing piece is the *market*. During a live
+tournament `slate.py` turns predictions into a daily loop and — critically — logs
+every bet's `(model_prob, odds, result)` so that by the end you can measure edge
+**against the line**, not just against base rates. Flat 1-unit stakes; log lives
+at `data/bet_log.csv` (gitignored).
+
+```bash
+python src/slate.py board                                  # today+tomorrow fixtures, probs & fair odds
+python src/slate.py log England Croatia --market home --odds 2.10
+python src/slate.py log Portugal "DR Congo" --market over --line 2.5 --odds 2.05
+python src/slate.py close England Croatia --market home --odds 1.80   # closing line, for CLV
+python src/slate.py grade                                   # settle bets from played results
+python src/slate.py report                                  # record, ROI, model-check, CLV, by-market
+```
+
+`report` shows realised ROI, whether the model's EV was predictive (avg model
+prob vs. realised win rate), and — where you've logged closing odds — **closing
+line value**: how often you beat the close and average CLV in probability points.
+CLV is the honest test of whether the model finds real edge; positive CLV is the
+signal that survives even when short-run results are noisy.
+
+## Automated odds (`odds.py`)
+
+Rather than typing prices by hand, `odds.py` pulls live US-book odds (FanDuel,
+DraftKings, BetMGM, …) from **[The Odds API](https://the-odds-api.com)** — a
+sanctioned JSON feed, *not* scraping — takes the best available price per market
+across books, and runs the value scan automatically. Stdlib only, no extra deps.
+
+The free tier is ~500 credits/month (cost = markets × regions, so an h2h+totals
+scan on `us` is 2 credits ≈ 250 scans/month — ample for one tournament). Get a
+free key (no card), then:
+
+```bash
+export ODDS_API_KEY=...                  # PowerShell: $env:ODDS_API_KEY="..."  (read from .env too)
+python src/odds.py sports                 # find the World Cup sport key + see quota
+python src/odds.py scan --min-odds 1.67   # value bets >= -150, sorted by EV, +odds flagged
+python src/odds.py btts --date 2026-06-18 # both-teams-to-score value (per-event, 1 credit/game)
+python src/odds.py log  --min-edge 0.03   # auto-log the +EV bets into bet_log.csv
+```
+
+`scan` shows American + decimal odds and `--min-odds` enforces an upside floor
+(1.67 = -150). h2h + totals come from the cheap bulk endpoint (2 credits/scan);
+BTTS and player props are event-level only — `btts` fetches them per game (1
+credit each). **Player props (goalscorer/shots/cards) are not modelled** — the
+Dixon-Coles model prices team goals, not individual players (a future build off
+`goalscorers.csv`).
+
+`scan`/`log` auto-discover the World Cup sport key, request **pre-match** games
+only (in-play prices are noise), match each game to the model (alias map + fuzzy
+fallback; unmatched games are reported, never silently dropped), and dedupe so
+re-running doesn't double-log. From there `grade`/`report` work as above.
+
+**Edge is measured vs the de-vigged market consensus, not the best line.** Taking
+the single most generous price across ~10 books (including soft offshore ones)
+manufactures fake "value"; the honest benchmark is the vig-free consensus, and a
+bet is only flagged when the model genuinely disagrees *and* a real price clears
+it.
+
+**Reality check (important):** against the sharp World Cup market the model shows
+a *systematic* pro-draw / pro-underdog lean — it disagrees in one consistent
+direction on almost every game. That is the classic Dixon-Coles weakness (Poisson
+structurally inflates draws and compresses talent gaps) meeting the sharpest
+soccer market there is. When a model disagrees with an efficient market that
+consistently, the prior is that the **model is biased, not that the market is
+wrong** — so treat scan flags as *hypotheses to test via CLV*, not green lights.
+Log a small flat-stake sample, record closing lines, and only trust the lean if
+it produces positive closing-line value over a real sample. Making the model
+actually competitive here means recalibrating its 1X2 (draw) probabilities
+against the market — a real project, not done.
 
 ## Caveats
 
