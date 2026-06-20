@@ -65,8 +65,9 @@ soccer_model/
     predict.py         # CLI (fit / match / fixtures / rankings / teams)
     backtest.py        # walk-forward, no-leakage calibration backtest
     calibrate.py       # fit + validate the over/under recalibration (Platt)
-    slate.py           # live workflow: board / log / grade / report (CLV tracking)
-    odds.py            # The Odds API: auto value-scan + auto-logging (free tier)
+    slate.py           # live workflow: board / log / grade / report (CLV by tier, Asian handicap)
+    odds.py            # The Odds API: auto value-scan + auto-logging (h2h/totals/spreads, tiered)
+    kelly.py           # tier-weighted fractional-Kelly staking off the forward bet log
     test_model.py      # hermetic sanity tests
   data/                # downloaded csvs + cached model.json (gitignore-able)
 ```
@@ -132,16 +133,46 @@ at `data/bet_log.csv` (gitignored).
 python src/slate.py board                                  # today+tomorrow fixtures, probs & fair odds
 python src/slate.py log England Croatia --market home --odds 2.10
 python src/slate.py log Portugal "DR Congo" --market over --line 2.5 --odds 2.05
-python src/slate.py close England Croatia --market home --odds 1.80   # closing line, for CLV
+python src/slate.py log Germany "Ivory Coast" --market ah_home --line -1.5 --odds 2.20  # Asian handicap
+python src/slate.py close England Croatia --market home --odds 1.80          # closing line, for CLV
+python src/slate.py close Germany "Ivory Coast" --market ah_home --line -1.5 --odds 2.05
 python src/slate.py grade                                   # settle bets from played results
-python src/slate.py report                                  # record, ROI, model-check, CLV, by-market
+python src/slate.py report                                  # record, ROI, model-check, CLV by tier
 ```
+
+**Markets** (all derived from the one score matrix): `home/draw/away` (1X2),
+`over/under` (totals), `btts_yes/btts_no`, and **`ah_home/ah_away`** (Asian
+handicap — the goal-supremacy "spread"; pass the signed handicap as `--line`,
+e.g. `ah_home --line -1.5`). Whole/half lines only; quarter-lines aren't priced yet.
+
+**Confidence tiers** (the soccer analog of the NFL model's HIGH/MEDIUM/PASS): every
+bet is tagged by its model-vs-market edge — **HIGH ≥ 5pp, MEDIUM ≥ 3pp, PASS** below
+(`slate.tier_for`). Auto-scanned bets tier on the edge vs the *de-vigged consensus*;
+manually-logged bets can only see one price, so their tier is price-implied (labelled
+as such).
 
 `report` shows realised ROI, whether the model's EV was predictive (avg model
 prob vs. realised win rate), and — where you've logged closing odds — **closing
-line value**: how often you beat the close and average CLV in probability points.
-CLV is the honest test of whether the model finds real edge; positive CLV is the
-signal that survives even when short-run results are noisy.
+line value by tier**: per HIGH/MEDIUM/PASS, the hit rate, ROI, and how often /
+by how much you beat the close. This is the honest test: *does the HIGH tier
+actually clear the close?* Positive CLV is the only signal that survives noisy
+short-run results — exactly the lesson the sibling NFL model learned the hard way
+(its "beats the close" edge turned out to be a closing-line-anchored artifact).
+
+### Staking (`kelly.py`)
+
+Once a tier has a settled forward sample, `kelly.py` sizes stakes by **fractional
+Kelly off the Wilson 95% lower bound** of that tier's hit rate (not the point
+estimate), capped per bet — so a lucky small sample can't inflate stakes, and a
+tier whose conservative edge doesn't clear the price gets **$0**.
+
+```bash
+python src/kelly.py --kelly-fraction 0.25 --cap 0.02 --min-n 20
+```
+
+A positive hit rate is necessary but **not sufficient** — confirm positive
+per-tier CLV (above) before trusting any stake. Against the sharp WC market the
+honest prior is that no tier has real edge until the forward CLV proves it.
 
 ## Automated odds (`odds.py`)
 
@@ -162,12 +193,14 @@ python src/odds.py btts --date 2026-06-18 # both-teams-to-score value (per-event
 python src/odds.py log  --min-edge 0.03   # auto-log the +EV bets into bet_log.csv
 ```
 
-`scan` shows American + decimal odds and `--min-odds` enforces an upside floor
-(1.67 = -150). h2h + totals come from the cheap bulk endpoint (2 credits/scan);
-BTTS and player props are event-level only — `btts` fetches them per game (1
-credit each). **Player props (goalscorer/shots/cards) are not modelled** — the
-Dixon-Coles model prices team goals, not individual players (a future build off
-`goalscorers.csv`).
+`scan` shows American + decimal odds, the **confidence tier** (HIGH/MEDIUM/PASS,
+see slate above), and `--min-odds` enforces an upside floor (1.67 = -150). h2h +
+totals + **spreads (Asian handicap)** come from the cheap bulk endpoint (**3
+credits/scan**); each AH line is priced from the score matrix and de-vigged against
+its paired opposite side. BTTS and player props are event-level only — `btts`
+fetches them per game (1 credit each). **Player props (goalscorer/shots/cards) are
+not modelled** — the Dixon-Coles model prices team goals, not individual players (a
+future build off `goalscorers.csv`).
 
 `scan`/`log` auto-discover the World Cup sport key, request **pre-match** games
 only (in-play prices are noise), match each game to the model (alias map + fuzzy
@@ -204,8 +237,50 @@ against the market — a real project, not done.
 
 ## Next steps
 
-- Ingest a live odds feed to automate the value scan across all fixtures — then
-  swap the climatology baseline in `backtest.py` for a true market baseline.
-- Add per-team strength uncertainty (bootstrap or Bayesian) to size bets.
-- Re-fit `calibrate.py` periodically as the live record grows; consider a
-  separate Platt map for O/U 3.5 if you bet that line.
+The strategy mirrors the sibling NFL model (`BettingEdgeContinued/`): predict the
+score → derive every market → bet where the model disagrees with the book → tier by
+confidence → size by Kelly → **judge everything by closing-line value, not raw
+accuracy or climatology**. Two tracks, measurement-first.
+
+### Betting execution (this WC — already scaffolded, finish + run)
+
+- **Quarter-line Asian handicap.** US books hang lots of `.25/.75` lines; the scanner
+  currently skips them (`markets.asian_handicap` is whole/half only). Add the standard
+  two-line stake split (`+1.25` = ½ `+1.0` + ½ `+1.5`) in both pricing and grading.
+- **Forward CLV collection.** No cheap historical international odds exist, so the CLV
+  rig is forward-only: log every qualifying pick at the *opening* line, snapshot the
+  *closing* line near kickoff (`slate close`), and accumulate `report`'s by-tier CLV
+  over the tournament. Bet paper / micro-stakes until a tier shows **positive CLV**.
+- **Gate Kelly on proven CLV.** `kelly.py` already sizes off the Wilson lower bound;
+  only turn on real stakes for a tier once its forward CLV is positive over a real
+  sample (the NFL re-fit landed at HIGH 2% / MEDIUM $0 — expect this market to be
+  harder, given the documented pro-draw/pro-underdog lean).
+- Auto-snapshot closing lines (extend `odds.py` to write `closing_odds` near kickoff),
+  and record book *price* alongside lines so CLV can be measured in cents, not just
+  points (a finding carried over from the NFL council review).
+
+### Model accuracy (the longer arc — from the design-council review)
+
+The current model sees only team identity + venue (~25 effective weighted matches per
+team), which is why it shrinks strong teams to the mean and leans pro-draw/underdog.
+The highest-lift additions, in order:
+
+1. **A real team-strength rating** — SPI-style separate offensive/defensive ratings off
+   *xG-adjusted* goals (plus Elo from eloratings.net, a free high-lift scrape). This is
+   the single biggest accuracy gain.
+2. **A squad-strength prior** — fixes thin data *and* roster volatility at once: anchor
+   each team's attack/defence to a squad-quality index (Transfermarkt market value, or
+   league-strength-adjusted club xG of the projected XI) so a friendly B-team result
+   stops contaminating the WC-XI estimate.
+3. **Keep Dixon-Coles as the coherent score-matrix core**, but feed it better rates —
+   either a LightGBM predicting the log-residual over the DC baseline, or a full
+   Bayesian hierarchical dynamic DC (random-walk team states, partial pooling by
+   confederation, squad covariate as the prior mean). Consider replacing the DC ρ
+   correction with a Poisson-lognormal to cure the structural draw bias.
+4. **Per-team strength uncertainty** (bootstrap/Bayesian posterior) to size bets honestly.
+5. **Data engineering caveat (Jan 2026):** the free FBref/Opta xG feed was shut off —
+   xG now comes from StatsBomb Open Data (tournament snapshots) or a paid feed
+   (API-Football has explicit WC 2026 coverage incl. lineups/injuries). Build a
+   point-in-time feature store with archived raw snapshots (no leakage).
+6. Re-fit `calibrate.py` as the live record grows; swap `backtest.py`'s climatology
+   baseline for a true market baseline once a historical odds source is in place.

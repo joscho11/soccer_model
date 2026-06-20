@@ -159,6 +159,8 @@ def collect(event: dict) -> dict:
                     key = ("tot25", oc["name"])  # name is "Over"/"Under"
                 elif mk["key"] == "btts":
                     key = ("btts", oc["name"])   # name is "Yes"/"No"
+                elif mk["key"] == "spreads" and oc.get("point") is not None:
+                    key = ("spread", oc["name"], float(oc["point"]))  # Asian handicap
                 else:
                     continue
                 d.setdefault(key, []).append((oc["price"], bk["key"]))
@@ -209,6 +211,25 @@ def scan_event(model, event, name_cache, neutral_by_fixture, min_books: int = 3)
         ("btts yes", "btts_yes", "", bt["btts_yes"], ("btts", "Yes"), btts_nv),
         ("btts no", "btts_no", "", bt["btts_no"], ("btts", "No"), btts_nv),
     ]
+    # Asian handicap (spreads): one selection pair per offered line. The book hangs
+    # the home point p and the away point -p; price each side from the score matrix
+    # and de-vig the two together. Note: whole-line AH can push (margin == -p), which
+    # value_vs_odds treats as a loss — fine for the half-lines US books hang.
+    home_pts = sorted({k[2] for k in coll if k[0] == "spread" and k[1] == api_h})
+    for p in home_pts:
+        # markets.asian_handicap (and slate grading) handle whole/half lines only;
+        # quarter-lines (.25/.75) need a two-line stake split — skip until supported,
+        # rather than misprice them (they'd manufacture fake edge).
+        if (p * 2) % 1 != 0:
+            continue
+        hk, ak = ("spread", api_h, p), ("spread", api_a, -p)
+        if ak not in coll:
+            continue
+        ah = markets.asian_handicap(mat, p)
+        ah_nv = novig([hk, ak], coll)
+        sels.append((f"AH {h} {p:+g}", "ah_home", p, ah[f"home_{p:+g}"], hk, ah_nv))
+        sels.append((f"AH {a} {-p:+g}", "ah_away", -p, ah[f"away_{-p:+g}"], ak, ah_nv))
+
     rows = []
     for label, code, line, prob, pkey, nv in sels:
         if pkey not in coll or nv is None or len(coll[pkey]) < min_books:
@@ -222,7 +243,7 @@ def scan_event(model, event, name_cache, neutral_by_fixture, min_books: int = 3)
         rows.append({"label": label, "market": code, "line": line, "model_prob": prob,
                      "mkt_prob": mkt, "disagree": disagree, "price": price, "book": book,
                      "ev": v["ev_per_unit"], "value": value, "home": h, "away": a,
-                     "date": mdate})
+                     "date": mdate, "tier": slate.tier_for(disagree)})
     return True, rows
 
 
@@ -248,7 +269,7 @@ def _gather(args):
     # h2h + totals are on the cheap bulk endpoint; BTTS/props/alt-totals are
     # event-level only (1 credit per game) so we don't pull them in a broad scan.
     events, hdr = api_get(f"/sports/{sport}/odds/", regions=args.regions,
-                          markets="h2h,totals", oddsFormat="decimal",
+                          markets="h2h,totals,spreads", oddsFormat="decimal",
                           commenceTimeFrom=now_iso)
     name_cache: dict = {}
     neutral_by_fixture = neutral_lookup()
@@ -271,7 +292,8 @@ def scan_cmd(args):
     picks.sort(key=lambda r: (-r["ev"], -r["disagree"]))
     for r in picks:
         plus = "  <-- +odds upside" if r["price"] >= 2.0 else ""
-        print(f"{american(r['price']):>5} ({r['price']:>5})  {r['home']} v {r['away']}"
+        print(f"{american(r['price']):>5} ({r['price']:>5})  [{r['tier']:6s}] "
+              f"{r['home']} v {r['away']}"
               f"  [{r['label']}]  model {r['model_prob']*100:.0f}% vs mkt "
               f"{r['mkt_prob']*100:.0f}%  edge {r['disagree']*100:+.1f}pp  "
               f"ev {r['ev']:+.2f}  ({r['book']}){plus}")
@@ -341,11 +363,12 @@ def log_cmd(args):
             if slate.pending_exists(r["home"], r["away"], r["market"], r["line"]):
                 skipped += 1
                 continue
+            line = r["line"] if r["line"] != "" else 2.5  # AH line can be 0.0 / negative
             slate.record_bet(r["home"], r["away"], r["market"], r["price"],
-                             r["model_prob"], r["date"], line=(r["line"] or 2.5),
-                             stake=args.stake)
+                             r["model_prob"], r["date"], line=line,
+                             stake=args.stake, tier=r["tier"], edge=r["disagree"])
             logged += 1
-            print(f"  logged {r['home']} v {r['away']} [{r['label']}] @ {r['price']} "
+            print(f"  logged [{r['tier']}] {r['home']} v {r['away']} [{r['label']}] @ {r['price']} "
                   f"({r['book']}) edge {r['disagree']*100:+.1f}pp vs mkt")
     print(f"\nauto-logged {logged} +EV bet(s) (edge >= {args.min_edge}); "
           f"{skipped} already pending.")
