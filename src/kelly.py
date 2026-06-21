@@ -61,6 +61,72 @@ def tier_stats(df: pd.DataFrame) -> dict:
     return out
 
 
+def cold_start_plan(df: pd.DataFrame, unit: float, bankroll: float,
+                    cap_frac: float, min_n: int, days: int | None = None) -> None:
+    """Staking for RIGHT NOW, before any tier has a settled forward sample.
+
+    With n=0 settled bets the honest win-rate estimate is undefined, its Wilson
+    95% lower bound is 0, and Kelly therefore says **$0** — betting nothing is the
+    statistically correct move. But the only way to *acquire* the CLV evidence that
+    would justify a real stake is to bet forward during the live tournament. So we
+    deliberately override Kelly with a small, flat, capped *probe* on HIGH-tier
+    picks only, explicitly speculative-until-CLV-proven, and print the math showing
+    why it stays tiny and never scales off the model's unproven self-belief."""
+    pending = df[df["result"] == "pending"].copy()
+    high = pending[pending["tier"] == "HIGH"]
+    if days:
+        from datetime import date, timedelta
+        window = {str(date.today() + timedelta(days=i)) for i in range(days)}
+        high = high[high["date"].astype(str).isin(window)]
+    settled_high = df[(df["tier"] == "HIGH") & df["result"].isin(["win", "loss"])]
+    n_high = len(high)
+
+    win_txt = f" in the next {days}d" if days else ""
+    print(f"\n=== COLD-START staking{win_txt} (no settled sample yet) ===")
+    print(f"  HIGH-tier settled bets: {len(settled_high)}  ->  Wilson 95% lower bound "
+          f"of win rate = 0  ->  Kelly says $0.")
+    print(f"  Kelly is correct that the *proven* edge is zero. We override with a flat,")
+    print(f"  capped probe purely to start the forward CLV record. Speculative until CLV-proven.\n")
+
+    if n_high == 0:
+        print("  No pending HIGH-tier picks in the log. Run `odds.py log --min-edge 0.05` "
+              "(or `slate log`)\n  to add some, then re-run.")
+        return
+
+    odds = pd.to_numeric(high["odds"], errors="coerce")
+    probs = pd.to_numeric(high["model_prob"], errors="coerce")
+    med_odds, med_prob = float(odds.median()), float(probs.median())
+
+    # What Kelly WOULD stake if we naively trusted the model's own edge — shown only
+    # to demonstrate how much we're choosing NOT to bet while the edge is unproven.
+    f_naive = kelly_fraction(med_prob, med_odds)
+    naive_pct = f_naive * 0.25  # quarter-Kelly
+    naive_dollars = naive_pct * bankroll
+
+    flat_pct = unit / bankroll if bankroll else 0.0
+    total = unit * n_high
+    total_pct = total / bankroll if bankroll else 0.0
+
+    print(f"  pending HIGH picks      {n_high}")
+    print(f"  flat probe / pick       ${unit:.2f}  ({flat_pct*100:.2f}% of ${bankroll:,.0f} bankroll)")
+    print(f"  total speculative risk  ${total:.2f}  ({total_pct*100:.2f}% of bankroll)")
+    cap_dollars = cap_frac * bankroll
+    if total > cap_dollars:
+        scaled = cap_dollars / n_high
+        print(f"  !! exceeds the {cap_frac*100:.0f}% cap (${cap_dollars:.0f}); "
+              f"scale each pick to ${scaled:.2f} (or bet fewer).")
+    else:
+        print(f"  within the {cap_frac*100:.0f}% total-exposure cap (${cap_dollars:.0f}). OK.")
+
+    print(f"\n  why the stake stays flat & small (the guardrail):")
+    print(f"    - the model believes its median HIGH pick is {med_prob*100:.0f}% @ {med_odds:.2f}; "
+          f"taken at\n      face value that's quarter-Kelly ~{naive_pct*100:.1f}% "
+          f"(${naive_dollars:.0f}/bet) -- we IGNORE that.")
+    print(f"    - against a sharp market a one-directional disagreement is most likely the")
+    print(f"      MODEL's bias (see !LEAN picks), so the prior edge is ~0 -> flat ${unit:.2f}, not Kelly.")
+    print(f"    - scale a tier ONLY when its forward CLV turns positive (slate.py report).")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Tier-weighted fractional-Kelly staking plan")
     p.add_argument("--bankroll", type=float, default=1000.0)
@@ -68,12 +134,20 @@ def main() -> None:
     p.add_argument("--cap", type=float, default=0.02, help="max stake per bet as bankroll fraction (default 2%)")
     p.add_argument("--confidence", type=float, default=1.96, help="z for the Wilson lower bound (default 95%)")
     p.add_argument("--min-n", type=int, default=20, help="min settled bets before a tier is sized (default 20)")
+    p.add_argument("--unit", type=float, default=5.0,
+                   help="cold-start flat probe $ per HIGH-tier pick (set your own amount)")
+    p.add_argument("--cold-start-cap", type=float, default=0.05,
+                   help="max TOTAL speculative exposure as bankroll fraction (default 5%)")
+    p.add_argument("--days", type=int, default=2,
+                   help="cold-start: only count pending HIGH picks in this window (default 2; 0 = all)")
     args = p.parse_args()
 
-    stats = tier_stats(slate._read_log())
-    if not stats:
-        print("No settled bets in the log yet. Log + grade some bets first "
-              "(slate.py log / grade), then re-run.")
+    df = slate._read_log()
+    stats = tier_stats(df)
+    if not stats or all(n < args.min_n for _, n, _ in stats.values()):
+        # nothing has a sized sample yet -> cold-start is the operative plan
+        cold_start_plan(df, args.unit, args.bankroll, args.cold_start_cap,
+                        args.min_n, days=args.days)
         return
 
     print("=== Tier-weighted Kelly staking plan (from forward bet log) ===")

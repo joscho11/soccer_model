@@ -13,6 +13,7 @@ cost = markets x regions, so a h2h+totals/us scan is 2 credits). Then:
     python src/odds.py sports          # find the World Cup sport key
     python src/odds.py scan            # value table for upcoming games
     python src/odds.py log --min-edge 0.02   # auto-log +EV bets to data/bet_log.csv
+    python src/odds.py close           # near kickoff: snapshot closing lines (CLV)
 
 Team names differ between books and the dataset ("Czechia" vs "Czech Republic",
 "USA" vs "United States"); an alias map plus fuzzy fallback handles it and any
@@ -104,6 +105,46 @@ def american(dec: float) -> str:
     if dec >= 2.0:
         return f"+{round((dec - 1) * 100)}"
     return f"-{round(100 / (dec - 1))}"
+
+
+def _line_key(market: str, line) -> str:
+    """Stable match key for a selection's line: "" for non-line markets, else the
+    canonical float string (so a logged "2.5"/"-1.0" matches a scan row's 2.5/-1.0)."""
+    if market not in slate.LINE_MARKETS:
+        return ""
+    try:
+        return str(float(line))
+    except (TypeError, ValueError):
+        return ""
+
+
+def lean_flag(code: str, line, h2h_nv, api_h: str, api_a: str) -> str:
+    """Tag picks that lean into the model's *documented* pro-draw / pro-underdog /
+    low-score bias (Poisson draw-inflation + talent-gap compression vs a sharp
+    market). Returns "draw", "dog", "under", or "" (pick does NOT lean into the
+    known weakness — e.g. backing a favourite or an over). These are the picks to
+    treat with the most suspicion: the model disagrees with the market in exactly
+    the direction it's known to be wrong."""
+    if code == "draw":
+        return "draw"
+    if code == "under":
+        return "under"
+    # is the backed side the market's underdog? use the de-vigged h2h consensus.
+    ph = (h2h_nv or {}).get(("h2h", api_h))
+    pa = (h2h_nv or {}).get(("h2h", api_a))
+    if code == "home" and ph is not None and pa is not None and ph < pa:
+        return "dog"
+    if code == "away" and ph is not None and pa is not None and pa < ph:
+        return "dog"
+    # Asian handicap: a positive handicap = receiving points = backing the relative
+    # underdog (whichever team the book gives the cushion to).
+    if code in ("ah_home", "ah_away"):
+        try:
+            if float(line) > 0:
+                return "dog"
+        except (TypeError, ValueError):
+            pass
+    return ""
 
 
 def discover_wc_key() -> str | None:
@@ -243,7 +284,8 @@ def scan_event(model, event, name_cache, neutral_by_fixture, min_books: int = 3)
         rows.append({"label": label, "market": code, "line": line, "model_prob": prob,
                      "mkt_prob": mkt, "disagree": disagree, "price": price, "book": book,
                      "ev": v["ev_per_unit"], "value": value, "home": h, "away": a,
-                     "date": mdate, "tier": slate.tier_for(disagree)})
+                     "date": mdate, "tier": slate.tier_for(disagree),
+                     "lean": lean_flag(code, line, h2h_nv, api_h, api_a)})
     return True, rows
 
 
@@ -280,25 +322,45 @@ def _gather(args):
     return model, sport, events, matched, unmatched, hdr
 
 
+def _date_window(days: int | None) -> set | None:
+    """Set of YYYY-MM-DD strings for [today, today+days), or None for no limit."""
+    if not days:
+        return None
+    today = date.today()
+    return {str(today + timedelta(days=i)) for i in range(days)}
+
+
 def scan_cmd(args):
     _, sport, events, matched, unmatched, hdr = _gather(args)
-    print(f"sport={sport}  region={args.regions}  events={len(events)}  "
+    window = _date_window(args.days)
+    win_txt = (f"next {args.days}d ({min(window)}..{max(window)})" if window
+               else f"on {args.date}" if args.date else "all upcoming")
+    print(f"sport={sport}  region={args.regions}  events={len(events)}  window={win_txt}\n"
           f"value bets, decimal odds >= {args.min_odds} ({american(args.min_odds)}), "
-          f"edge >= {args.min_edge*100:.0f}pp\n")
+          f"edge >= {args.min_edge*100:.0f}pp, ranked by EV\n")
     # flatten to value bets meeting the upside/odds preference, best edge first
     picks = [r for rows in matched for r in rows
              if r["value"] and r["disagree"] >= args.min_edge and r["price"] >= args.min_odds
-             and (not args.date or r["date"] == args.date)]
+             and (not args.date or r["date"] == args.date)
+             and (window is None or r["date"] in window)]
     picks.sort(key=lambda r: (-r["ev"], -r["disagree"]))
+    leaning = 0
     for r in picks:
         plus = "  <-- +odds upside" if r["price"] >= 2.0 else ""
-        print(f"{american(r['price']):>5} ({r['price']:>5})  [{r['tier']:6s}] "
+        lean = f"  !LEAN:{r['lean']}" if r["lean"] else ""
+        leaning += bool(r["lean"])
+        print(f"{r['date']}  {american(r['price']):>5} ({r['price']:>5})  [{r['tier']:6s}] "
               f"{r['home']} v {r['away']}"
               f"  [{r['label']}]  model {r['model_prob']*100:.0f}% vs mkt "
               f"{r['mkt_prob']*100:.0f}%  edge {r['disagree']*100:+.1f}pp  "
-              f"ev {r['ev']:+.2f}  ({r['book']}){plus}")
+              f"ev {r['ev']:+.2f}  ({r['book']}){plus}{lean}")
     if not picks:
         print(f"No value bets at decimal >= {args.min_odds}. Lower --min-odds/--min-edge.")
+    else:
+        print(f"\n{len(picks)} picks; {leaning} carry !LEAN (draw/dog/under) -- the model's "
+              f"documented\npro-draw/pro-underdog/low-score bias. Treat LEAN picks as the "
+              f"most suspect:\nthey're where the model disagrees with the sharp market in its "
+              f"known-wrong direction.")
     if unmatched:
         print(f"\nunmatched teams (add to ALIASES): {sorted(set(unmatched))}")
     print(f"\nquota: {hdr['remaining']} remaining, {hdr['used']} used")
@@ -377,6 +439,60 @@ def log_cmd(args):
     print(f"quota: {hdr['remaining']} remaining, {hdr['used']} used")
 
 
+def close_cmd(args):
+    """Snapshot current best prices into closing_odds for pending bets. Run this
+    *near kickoff* — `_gather` only returns pre-match games (commenceTimeFrom=now),
+    so any game still listed hasn't started and its price is a genuine closing line;
+    games already kicked off drop out and are reported as not-closed. CLV uses the
+    same best-price metric the bet was logged at, so it's an apples-to-apples
+    'did the obtainable price shorten?' measure (see slate.report)."""
+    df = slate._read_log()
+    if df.empty:
+        print("Bet log is empty; nothing to close.")
+        return
+    pend = df[df["result"] == "pending"].copy()
+    if args.date:
+        pend = pend[pend["date"] == args.date]
+    # Re-snapshot every pending pre-match bet (no blank-only filter): running close
+    # repeatedly through the day overwrites with the latest price, so the *last run
+    # before kickoff wins* = the true closing line. Games already kicked off drop out
+    # of _gather (pre-match only) and keep whatever the last pre-kickoff run wrote.
+    if pend.empty:
+        where = f" on {args.date}" if args.date else ""
+        print(f"No pending bets{where}.")
+        return
+
+    _, sport, events, matched, unmatched, hdr = _gather(args)
+    best = {}  # (home, away, market, line_key) -> best current price
+    for rows in matched:
+        for r in rows:
+            best[(r["home"], r["away"], r["market"], _line_key(r["market"], r["line"]))] = r["price"]
+
+    closed = []
+    missing = updated = 0
+    for i, b in pend.iterrows():
+        key = (b["home_team"], b["away_team"], b["market"], _line_key(b["market"], b["line"]))
+        price = best.get(key)
+        if price is None:
+            missing += 1
+            continue
+        if str(b["closing_odds"]).strip() not in ("", "nan"):
+            updated += 1                          # refining an earlier snapshot
+        df.at[i, "closing_odds"] = price
+        sfx = slate._line_sfx(b["market"], b["line"])
+        closed.append((b["home_team"], b["away_team"], b["market"] + sfx, float(b["odds"]), price))
+    slate._write_log(df)
+
+    for h, a, sel, bet, close in closed:
+        mv = "shorter (+CLV)" if close < bet else ("longer (-CLV)" if close > bet else "flat")
+        print(f"  {h} v {a} [{sel}]  bet {bet:>5} -> close {close:>5}  {mv}")
+    upd = f" ({updated} refined from an earlier run)" if updated else ""
+    print(f"\nclosed {len(closed)} bet(s){upd}; {missing} not yet closeable "
+          f"(game started or market gone). quota: {hdr['remaining']} remaining, {hdr['used']} used")
+    if unmatched:
+        print(f"unmatched teams (add to ALIASES): {sorted(set(unmatched))}")
+
+
 def main():
     p = argparse.ArgumentParser(description="The Odds API value scan + auto-logging")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -392,6 +508,8 @@ def main():
     sc.add_argument("--min-odds", type=float, default=1.67,
                     help="min decimal odds (default 1.67 = -150; upside preference)")
     sc.add_argument("--date", default=None, help="restrict to one match date YYYY-MM-DD")
+    sc.add_argument("--days", type=int, default=2,
+                    help="rolling window from today (default 2 = today+tomorrow; 0 = all upcoming)")
     sc.set_defaults(func=scan_cmd)
 
     bt = sub.add_parser("btts", help="both-teams-to-score value (per-event, 1 credit/game)")
@@ -409,6 +527,15 @@ def main():
                     help="min model-vs-market disagreement to log (prob, default 0.03=3pp)")
     lg.add_argument("--stake", type=float, default=1.0)
     lg.set_defaults(func=log_cmd)
+
+    cl = sub.add_parser("close", help="snapshot closing lines for pending bets (run near kickoff)")
+    cl.add_argument("--sport")
+    cl.add_argument("--regions", default="us")
+    cl.add_argument("--date", default=str(date.today()),
+                    help="match date to close YYYY-MM-DD (default today); --all for every pending date")
+    cl.add_argument("--all", dest="date", action="store_const", const=None,
+                    help="close every pending bet still pre-match, not just today's")
+    cl.set_defaults(func=close_cmd)
 
     args = p.parse_args()
     args.func(args)

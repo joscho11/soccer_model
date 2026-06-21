@@ -100,6 +100,100 @@ def test_bet_grading():
     assert _won("under", 3.0, 1, 2)[0] == "push"    # exactly on an integer line
 
 
+def test_line_key_matches_logged_lines():
+    from odds import _line_key
+    assert _line_key("home", "") == ""          # non-line market -> empty key
+    assert _line_key("over", "2.5") == "2.5"     # logged string line
+    assert _line_key("over", 2.5) == "2.5"       # scan-row float line
+    assert _line_key("ah_away", "-1.0") == "-1.0"
+    assert _line_key("ah_home", -1.0) == "-1.0"
+
+
+def test_track_grades_against_actual():
+    # grade_cmd should fill actual result + per-market correctness for a played game.
+    # Hermetic: temp PRED_PATH + stubbed load_results (no disk / network).
+    import tempfile
+    from pathlib import Path
+    from types import SimpleNamespace
+    import track
+    orig_path, orig_load = track.PRED_PATH, track.load_results
+    try:
+        track.PRED_PATH = Path(tempfile.mkdtemp()) / "predictions.csv"
+        row = {c: "" for c in track.COLS}
+        row.update({"date": "2026-06-21", "home_team": "A", "away_team": "B",
+                    "neutral": True, "p_home": 0.6, "p_draw": 0.25, "p_away": 0.15,
+                    "pred_outcome": "home", "pred_score": "2-0",
+                    "p_over25": 0.6, "p_btts_yes": 0.3, "result": "pending"})
+        track._write(pd.DataFrame([row], columns=track.COLS))
+        played = pd.DataFrame(
+            [("2026-06-21", "A", "B", 2, 0, "FIFA World Cup", True)],
+            columns=["date", "home_team", "away_team", "home_score", "away_score",
+                     "tournament", "neutral"])
+        track.load_results = lambda: played
+        track.grade_cmd(SimpleNamespace())
+        r = track._read().iloc[0]
+        assert r["result"] == "graded"
+        assert int(r["outcome_correct"]) == 1   # home win predicted, home won
+        assert int(r["score_correct"]) == 1     # predicted 2-0, actual 2-0
+        assert int(r["ou_correct"]) == 0        # predicted over (0.6) but 2 goals -> under
+        assert int(r["btts_correct"]) == 1      # predicted no (0.3 yes) and B didn't score
+    finally:
+        track.PRED_PATH, track.load_results = orig_path, orig_load
+
+
+def test_ah_confidence_measures_distance_from_coinflip():
+    from predict import _ah_confidence
+    # confidence is about the favourite COVERING the handicap, i.e. how far the cover
+    # probability sits from 50% — not about who wins the match.
+    assert _ah_confidence(0.65) == "HIGH"    # cover 65% -> 0.15 from coin-flip
+    assert _ah_confidence(0.35) == "HIGH"    # symmetric: 0.15 below 50% is just as decisive
+    assert _ah_confidence(0.57) == "MEDIUM"  # 0.07 from 50%
+    assert _ah_confidence(0.52) == "LOW"     # basically a coin-flip on the line
+
+
+def test_lean_flag_marks_known_bias():
+    from odds import lean_flag
+    # h2h consensus: home is the favourite (0.6), away the underdog (0.15).
+    nv = {("h2h", "Home"): 0.6, ("h2h", "Draw"): 0.25, ("h2h", "Away"): 0.15}
+    assert lean_flag("draw", "", nv, "Home", "Away") == "draw"
+    assert lean_flag("under", 2.5, nv, "Home", "Away") == "under"
+    assert lean_flag("away", "", nv, "Home", "Away") == "dog"      # backing the underdog
+    assert lean_flag("home", "", nv, "Home", "Away") == ""         # backing the favourite
+    assert lean_flag("over", 2.5, nv, "Home", "Away") == ""        # not a low-score lean
+    # Asian handicap: receiving points (+) = backing the relative underdog.
+    assert lean_flag("ah_away", 1.5, nv, "Home", "Away") == "dog"
+    assert lean_flag("ah_home", -1.5, nv, "Home", "Away") == ""    # laying points = favourite
+
+
+def test_close_snapshots_best_price():
+    # close_cmd should write the current best price into closing_odds for pending
+    # bets, matching line markets by line and non-line markets by "". Hermetic:
+    # temp LOG_PATH (never touch the real bet_log) + stubbed _gather (no network).
+    import tempfile
+    from pathlib import Path
+    from types import SimpleNamespace
+    import slate, odds
+    orig_path, orig_gather = slate.LOG_PATH, odds._gather
+    try:
+        slate.LOG_PATH = Path(tempfile.mkdtemp()) / "bet_log.csv"
+        slate.record_bet("A", "B", "over", 2.10, 0.55, "2026-06-21", line=2.5, tier="HIGH")
+        slate.record_bet("A", "B", "draw", 3.40, 0.30, "2026-06-21", tier="HIGH")
+        matched = [[
+            {"home": "A", "away": "B", "market": "over", "line": 2.5, "price": 1.95},
+            {"home": "A", "away": "B", "market": "draw", "line": "", "price": 3.60},
+        ]]
+        odds._gather = lambda args: (None, "wc", [], matched, [],
+                                     {"remaining": "1", "used": "1"})
+        odds.close_cmd(SimpleNamespace(date="2026-06-21", sport=None, regions="us"))
+        df = slate._read_log()
+        over = df[df["market"] == "over"].iloc[0]
+        draw = df[df["market"] == "draw"].iloc[0]
+        assert abs(float(over["closing_odds"]) - 1.95) < 1e-9
+        assert abs(float(draw["closing_odds"]) - 3.60) < 1e-9
+    finally:
+        slate.LOG_PATH, odds._gather = orig_path, orig_gather
+
+
 if __name__ == "__main__":
     import sys
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

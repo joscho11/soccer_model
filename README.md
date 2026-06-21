@@ -36,6 +36,7 @@ python src/calibrate.py            # fit the over/under recalibration into model
 ## Usage
 
 ```bash
+python src/predict.py day 2026-06-21                   # full predictions printout for one day's WC slate
 python src/predict.py rankings                         # team strength table
 python src/predict.py match "Brazil" "Croatia"         # full market report (neutral venue)
 python src/predict.py match "United States" Wales --home-venue   # host plays at home
@@ -224,6 +225,67 @@ Log a small flat-stake sample, record closing lines, and only trust the lean if
 it produces positive closing-line value over a real sample. Making the model
 actually competitive here means recalibrating its 1X2 (draw) probabilities
 against the market — a real project, not done.
+
+## Daily predictions (the main use)
+
+The everyday command is a clean terminal printout of one day's World Cup slate:
+
+```bash
+python src/download_data.py --force      # refresh results (overnight games)
+python src/predict.py day 2026-06-21     # full predictions for that day
+```
+
+For each match `day` prints: kickoff time, the predicted scoreline + expected goals,
+1X2 win/draw/win probabilities (for context) with fair odds, over/under 2.5, BTTS, and
+the single most-likely outcome. The **headline confidence is Asian-handicap cover
+confidence** — how confident the model is that the favourite covers the book's main
+(most-balanced) handicap line, scored by how far the model's cover probability sits from
+a 50/50 coin-flip. (Match-winner confidence is near-useless — "Spain beats Saudi Arabia"
+is obvious; "Spain covers −2.5" is the real question.) It closes with a **biggest-
+mismatches** ranking by handicap-cover disagreement (model cover vs the posted line).
+
+The handicap line + de-vigged implied prob come from the same odds feed the betting
+layer uses (~3 credits per run); `--no-odds` runs fully offline (no kickoff times, no AH
+confidence). The model prices **team goals only** — no player props.
+
+### Tracking accuracy (`track.py`)
+
+To honestly compare predictions to outcomes over the tournament, `track.py` freezes a
+**point-in-time** prediction for each fixture and grades it once the game is played:
+
+```bash
+python src/track.py freeze     # lock predictions for upcoming fixtures (next 3 days)
+python src/track.py grade      # fill actual results + per-market correctness
+python src/track.py report     # accuracy: 1X2 hit rate, exact score, O/U, BTTS, Brier, log loss
+```
+
+No leakage: only **unplayed** fixtures are frozen (an unplayed game can't be in the
+training data), and each is recorded once — a later refit never rewrites a locked
+prediction, so the record is a true forward forecast. The log lives at
+`data/predictions.csv` (tracked in git — it *is* the accuracy record). The daily
+`soccer-refresh` job runs `freeze` + `grade` automatically each morning.
+
+## Betting / CLV loop (optional, advanced)
+
+The betting machinery below is no longer the focus but stays usable. `scan --days 2`
+ranks 48h of picks by EV with an inline `!LEAN:draw/dog/under` flag; `kelly.py` with no
+settled sample prints a flat, capped **cold-start** probe on HIGH-tier picks (Kelly is $0
+with zero evidence — a deliberate, labelled override to seed the CLV record).
+
+```powershell
+python src/download_data.py --force ; python src/slate.py grade   # refresh results + grade yesterday
+python src/odds.py scan --days 2                                   # ranked 48h slate, tier + !LEAN flags
+python src/odds.py log --min-edge 0.05                             # auto-log HIGH-tier picks at opening price
+python src/kelly.py --unit 5 --bankroll 500                        # cold-start stake (set your own $unit/bankroll)
+python src/odds.py close                                           # near kickoff: snapshot closing lines
+python src/slate.py report                                         # by-tier CLV scoreboard
+```
+
+CLV is only honest if the closing snapshot is **near kickoff**. The scheduled jobs split
+this correctly: **`soccer-refresh`** (9am ET → `scripts/daily_refresh.ps1`: refresh +
+grade + report) and **`soccer-close`** (11:40/14:40/17:40/20:40 ET →
+`scripts/daily_close.ps1`: `odds.py close`, which overwrites so the *last pre-kickoff run
+wins* = true close). Manage via `Get-ScheduledTask soccer-*`.
 
 ## Caveats
 
