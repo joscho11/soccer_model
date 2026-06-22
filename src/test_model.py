@@ -109,6 +109,24 @@ def test_line_key_matches_logged_lines():
     assert _line_key("ah_home", -1.0) == "-1.0"
 
 
+def test_context_features_are_point_in_time():
+    import context
+    rows = [
+        ("2026-01-01", "Brazil", "Spain", 1, 0, "Friendly", "x", "Brazil", "TRUE"),
+        ("2026-01-05", "Brazil", "France", 1, 0, "Friendly", "x", "Brazil", "TRUE"),
+        ("2026-01-08", "Brazil", "Spain", 1, 1, "Friendly", "x", "Spain", "TRUE"),
+    ]
+    cols = ["date", "home_team", "away_team", "home_score", "away_score",
+            "tournament", "city", "country", "neutral"]
+    out = context.attach(pd.DataFrame(rows, columns=cols))
+    # match 1: nobody has a prior game -> rest advantage 0 (leak-free, no future peeking)
+    assert out.iloc[0]["rest_adv"] == 0.0
+    # match 3 in Spain: Brazil last played 01-05 (3 days), Spain last 01-01 (7 days)
+    assert out.iloc[2]["rest_adv"] == 3 - 7          # home rested less -> negative
+    # travel: home Brazil flies to Spain, away Spain is home -> away travels less -> < 0
+    assert out.iloc[2]["travel_adv"] < 0
+
+
 def test_challenge_parlay_grades_and_pays():
     import tempfile, json
     from pathlib import Path

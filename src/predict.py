@@ -25,6 +25,12 @@ MODEL_PATH = Path(__file__).resolve().parent.parent / "data" / "model.json"
 
 # ---- persistence ---------------------------------------------------------
 def save_model(m: DixonColes) -> None:
+    # The on-disk schema persists only the baseline model. The experimental features
+    # (elo / squad / context) are backtest-only and NOT serialized, so refuse to save a
+    # model fit with them rather than silently round-trip back to a plain model.
+    if m.use_elo or m.elo_prior or m.squad_prior or m.use_context:
+        raise ValueError("save_model supports the baseline model only; elo/squad/context "
+                         "are backtest-only experiments and are not persisted.")
     MODEL_PATH.write_text(json.dumps({
         "attack": m.attack, "defence": m.defence, "home_adv": m.home_adv,
         "rho": m.rho,

@@ -103,6 +103,18 @@ class DixonColes:
     # (strong/low-data teams shrunk to the mean) without disturbing well-sampled teams.
     elo_prior: bool = False
     elo_prior_lambda: float = 5.0
+    # Squad-value prior (free Transfermarkt market value via squad.py): same shrinkage
+    # mechanism, target = standardised log squad market value instead of Elo.
+    squad_prior: bool = False
+    squad_prior_lambda: float = 5.0
+    # Pre-match CONTEXT covariates (rest/congestion/travel/climate via context.py): each
+    # is a standardised home-minus-away advantage that shifts goal supremacy. Columns must
+    # be attached to the df (context.attach) before fit. Predict-time values via lambdas(ctx=).
+    use_context: bool = False
+    context_cols: tuple[str, ...] = ("rest_adv", "cong_adv", "travel_adv", "climate_adv")
+    context_theta: list[float] = field(default_factory=list)
+    context_mean: list[float] = field(default_factory=list)
+    context_std: list[float] = field(default_factory=list)
 
     # ---- data prep -------------------------------------------------------
     def _prepare(self, df: pd.DataFrame, as_of: date) -> pd.DataFrame:
@@ -151,32 +163,67 @@ class DixonColes:
             elo_diff = (ep["home_elo_pre"] - ep["away_elo_pre"]).to_numpy() / 400.0
         else:
             elo_diff = np.zeros(len(data))
-        if self.elo_prior:                     # standardised per-team Elo strength target
-            ev = np.array([self.elo_ratings.get(t, elo.START_RATING) for t in teams])
-            elo_z = (ev - ev.mean()) / (ev.std() + 1e-9)
+        # context covariates (standardised); columns attached by context.attach beforehand
+        if self.use_context:
+            Craw = data[list(self.context_cols)].to_numpy(dtype=float)
+            self.context_mean = np.nanmean(Craw, axis=0).tolist()
+            self.context_std = (np.nanstd(Craw, axis=0) + 1e-9).tolist()
+            C = np.nan_to_num((Craw - self.context_mean) / np.array(self.context_std), nan=0.0)
+            kctx = C.shape[1]
         else:
-            elo_z = None
+            C, kctx = None, 0
+        # Unified strength PRIOR: shrink (attack - defence) toward a standardised
+        # per-team target (Elo ratings, or squad market value). prior_z may contain
+        # NaN for teams with no target (e.g. unmapped/unvalued nations) -> excluded.
+        prior_z, prior_lambda = None, 0.0
+        if self.elo_prior:
+            ev = np.array([self.elo_ratings.get(t, elo.START_RATING) for t in teams])
+            prior_z = (ev - ev.mean()) / (ev.std() + 1e-9)
+            prior_lambda = self.elo_prior_lambda
+        elif self.squad_prior:
+            import warnings
+            try:
+                import squad
+                sidx = squad.squad_index(teams, as_of)
+            except Exception as e:                  # network/data failure -> degrade, don't crash
+                warnings.warn(f"squad_prior disabled (squad data unavailable): {e}")
+                sidx = {}
+            sv = np.array([sidx.get(t, np.nan) for t in teams])
+            m = ~np.isnan(sv)
+            if m.sum() >= 2:
+                z = np.full(len(teams), np.nan)
+                z[m] = (sv[m] - sv[m].mean()) / (sv[m].std() + 1e-9)
+                prior_z, prior_lambda = z, self.squad_prior_lambda
+            else:
+                warnings.warn("squad_prior requested but <2 teams have squad values; "
+                              "prior is inactive (running as the plain model).")
 
-        # params: [attack(n), defence(n), home_adv, rho, (extra: gamma if use_elo / beta if elo_prior)]
-        has_extra = self.use_elo or self.elo_prior
+        # params: [attack(n), defence(n), home_adv, rho, (extra if has_extra), (ctx_theta(kctx))]
+        has_extra = self.use_elo or (prior_z is not None)
+        prior_mask = ~np.isnan(prior_z) if prior_z is not None else None
+        base = 2 * n + 2
 
         def unpack(p):
-            extra = p[2 * n + 2] if has_extra else 0.0
-            return p[:n], p[n:2 * n], p[2 * n], p[2 * n + 1], extra
+            extra = p[base] if has_extra else 0.0
+            o = base + (1 if has_extra else 0)
+            cth = p[o:o + kctx] if kctx else np.zeros(0)
+            return p[:n], p[n:2 * n], p[2 * n], p[2 * n + 1], extra, cth
 
         def neg_log_lik(p):
-            atk, dfc, home, rho, extra = unpack(p)
+            atk, dfc, home, rho, extra, cth = unpack(p)
             gamma = extra if self.use_elo else 0.0
-            log_lam_h = atk[hi] + dfc[ai] + home * non_neutral + gamma * elo_diff
-            log_lam_a = atk[ai] + dfc[hi] - gamma * elo_diff
+            shift = (C @ cth) if kctx else 0.0
+            log_lam_h = atk[hi] + dfc[ai] + home * non_neutral + gamma * elo_diff + shift
+            log_lam_a = atk[ai] + dfc[hi] - gamma * elo_diff - shift
             lam_h = np.exp(log_lam_h)
             lam_a = np.exp(log_lam_a)
             tau = _tau(hs, as_, lam_h, lam_a, rho)
             tau = np.clip(tau, 1e-9, None)  # guard against negative tau
             ll = np.log(tau) + (hs * log_lam_h - lam_h) + (as_ * log_lam_a - lam_a)
             penalty = 100.0 * atk.sum() ** 2  # identifiability: mean attack ~ 0
-            if self.elo_prior:                # shrink net strength toward beta*elo_z
-                penalty += self.elo_prior_lambda * np.sum((atk - dfc - extra * elo_z) ** 2)
+            if prior_z is not None:           # shrink net strength toward beta*target
+                d = atk[prior_mask] - dfc[prior_mask] - extra * prior_z[prior_mask]
+                penalty += prior_lambda * np.sum(d ** 2)
             return -(w * ll).sum() + penalty
 
         parts = [np.zeros(n), np.zeros(n), np.array([0.25]), np.array([0.0])]
@@ -184,16 +231,21 @@ class DixonColes:
         if has_extra:
             parts.append(np.array([0.0]))
             bounds.append((-3, 3))            # gamma (covariate) or beta (prior)
+        if kctx:
+            parts.append(np.zeros(kctx))
+            bounds += [(-1, 1)] * kctx        # context coefficients
         res = minimize(neg_log_lik, np.concatenate(parts), method="L-BFGS-B",
                        bounds=bounds, options={"maxiter": 500, "maxfun": 100000})
 
-        atk, dfc, home, rho, extra = unpack(res.x)
+        atk, dfc, home, rho, extra, cth = unpack(res.x)
         self.attack = {t: float(atk[i]) for t, i in idx.items()}
         self.defence = {t: float(dfc[i]) for t, i in idx.items()}
         self.home_adv = float(home)
         self.rho = float(rho)
         if self.use_elo:
             self.elo_gamma = float(extra)     # prior's beta isn't needed at predict time
+        if self.use_context:
+            self.context_theta = cth.tolist()
         self.teams = teams
         self.fitted_on = str(as_of)
         self.n_matches = len(data)
@@ -202,7 +254,8 @@ class DixonColes:
         return self
 
     # ---- prediction ------------------------------------------------------
-    def lambdas(self, home: str, away: str, neutral: bool = True) -> tuple[float, float]:
+    def lambdas(self, home: str, away: str, neutral: bool = True,
+                ctx=None) -> tuple[float, float]:
         for t in (home, away):
             if t not in self.attack:
                 raise KeyError(f"Unknown / insufficiently-sampled team: {t!r}. "
@@ -215,13 +268,19 @@ class DixonColes:
                  - self.elo_ratings.get(away, elo.START_RATING)) / 400.0
             base_h += self.elo_gamma * d
             base_a -= self.elo_gamma * d
+        if self.use_context and ctx is not None and self.context_theta:
+            cz = np.nan_to_num((np.asarray(ctx, float) - self.context_mean)
+                               / np.asarray(self.context_std), nan=0.0)
+            s = float(np.dot(cz, self.context_theta))
+            base_h += s
+            base_a -= s
         return float(np.exp(base_h)), float(np.exp(base_a))
 
     def over_prob(self, home: str, away: str, neutral: bool = True,
-                  line: float = 2.5, calibrated: bool = True) -> float:
+                  line: float = 2.5, calibrated: bool = True, ctx=None) -> float:
         """P(total goals > line). Raw value is the Poisson-sum tail; with `calibrated`
         and a fitted Platt map, it is corrected for the model's totals overconfidence."""
-        lam_h, lam_a = self.lambdas(home, away, neutral)
+        lam_h, lam_a = self.lambdas(home, away, neutral, ctx=ctx)
         mu = lam_h + lam_a
         k = int(np.floor(line))  # e.g. line 2.5 -> need total >= 3
         from scipy.stats import poisson
@@ -232,9 +291,9 @@ class DixonColes:
         return raw
 
     def score_matrix(self, home: str, away: str, neutral: bool = True,
-                     max_goals: int = 10) -> np.ndarray:
+                     max_goals: int = 10, ctx=None) -> np.ndarray:
         """P(home=i, away=j) for i,j in [0, max_goals], with DC correction."""
-        lam_h, lam_a = self.lambdas(home, away, neutral)
+        lam_h, lam_a = self.lambdas(home, away, neutral, ctx=ctx)
         gh = np.arange(max_goals + 1)
         # independent Poisson outer product
         from scipy.stats import poisson

@@ -3,6 +3,7 @@
 data/*.csv
 !data/predictions.csv
 !data/challenge_log.csv
+!data/country_coords.csv
 data/model.json
 __pycache__/
 *.pyc

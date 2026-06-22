@@ -63,14 +63,20 @@ soccer_model/
     download_data.py   # pull the dataset
     dixon_coles.py     # the model: fit (weighted MLE) + score matrix
     markets.py         # score matrix -> market probabilities + value-vs-odds
-    predict.py         # CLI (fit / match / fixtures / rankings / teams)
-    backtest.py        # walk-forward, no-leakage calibration backtest
+    predict.py         # CLI (fit / day / match / fixtures / rankings / teams)
+    backtest.py        # walk-forward, no-leakage calibration backtest (+ feature experiment flags)
     calibrate.py       # fit + validate the over/under recalibration (Platt)
+    track.py           # forward prediction tracker: freeze / grade / report (accuracy record)
+    challenge.py       # daily $25->$100 challenge: log / grade / report (-EV fun)
     slate.py           # live workflow: board / log / grade / report (CLV by tier, Asian handicap)
     odds.py            # The Odds API: auto value-scan + auto-logging (h2h/totals/spreads, tiered)
     kelly.py           # tier-weighted fractional-Kelly staking off the forward bet log
+    elo.py             # [experiment, off] point-in-time World Football Elo from results
+    squad.py           # [experiment, off] point-in-time squad market value (Transfermarkt)
+    context.py         # [experiment, off] point-in-time rest / travel / climate covariates
     test_model.py      # hermetic sanity tests
-  data/                # downloaded csvs + cached model.json (gitignore-able)
+  data/                # csvs + cached model.json (gitignored); committed: predictions.csv,
+                       #   challenge_log.csv, country_coords.csv
 ```
 
 ## Calibration backtest
@@ -265,7 +271,19 @@ prediction, so the record is a true forward forecast. The log lives at
 `data/predictions.csv` (tracked in git — it *is* the accuracy record). The daily
 `soccer-refresh` job runs `freeze` + `grade` automatically each morning.
 
-## Betting / CLV loop (optional, advanced)
+### $25 → $100 challenge (`challenge.py`)
+
+A daily for-fun exercise: pick a ticket of bets on tomorrow's slate and see whether $25
+would have reached $100. Logged and graded (from live scores) so results accumulate.
+
+```bash
+python src/challenge.py log --date 2026-06-22 --stake 25 --legs '<json legs>'
+python src/challenge.py grade    # settle from played games (--live pulls Odds API scores)
+python src/challenge.py report   # per-day: did $25 reach $100?
+```
+
+It's **-EV gambling on the model's known bias, not financial advice** — a 4x target
+rewards concentration (one small parlay), not spreading into many singles.
 
 The betting machinery below is no longer the focus but stays usable. `scan --days 2`
 ranks 48h of picks by EV with an inline `!LEAN:draw/dog/under` flag; `kelly.py` with no
@@ -321,28 +339,34 @@ accuracy or climatology**. Two tracks, measurement-first.
   and record book *price* alongside lines so CLV can be measured in cents, not just
   points (a finding carried over from the NFL council review).
 
-### Model accuracy (the longer arc — from the design-council review)
+### Model accuracy — what we tried, measured, and concluded
 
-The current model sees only team identity + venue (~25 effective weighted matches per
-team), which is why it shrinks strong teams to the mean and leans pro-draw/underdog.
-The highest-lift additions, in order:
+The baseline sees only team identity + venue (~25 effective weighted matches per team).
+We hypothesised that adding signal would lift skill, and tested it **measurement-first**:
+each candidate was built point-in-time (no leakage), added to the walk-forward backtest,
+and judged purely by out-of-sample skill vs the baseline (**1X2 log loss 0.847, RPS 0.165,
+60% accuracy, ECE 0.013** over 2,534 competitive matches, 2023-06→2026-06). All toggles
+default **off**; the production model is the baseline.
 
-1. **A real team-strength rating** — SPI-style separate offensive/defensive ratings off
-   *xG-adjusted* goals (plus Elo from eloratings.net, a free high-lift scrape). This is
-   the single biggest accuracy gain.
-2. **A squad-strength prior** — fixes thin data *and* roster volatility at once: anchor
-   each team's attack/defence to a squad-quality index (Transfermarkt market value, or
-   league-strength-adjusted club xG of the projected XI) so a friendly B-team result
-   stops contaminating the WC-XI estimate.
-3. **Keep Dixon-Coles as the coherent score-matrix core**, but feed it better rates —
-   either a LightGBM predicting the log-residual over the DC baseline, or a full
-   Bayesian hierarchical dynamic DC (random-walk team states, partial pooling by
-   confederation, squad covariate as the prior mean). Consider replacing the DC ρ
-   correction with a Poisson-lognormal to cure the structural draw bias.
-4. **Per-team strength uncertainty** (bootstrap/Bayesian posterior) to size bets honestly.
-5. **Data engineering caveat (Jan 2026):** the free FBref/Opta xG feed was shut off —
-   xG now comes from StatsBomb Open Data (tournament snapshots) or a paid feed
-   (API-Football has explicit WC 2026 coverage incl. lineups/injuries). Build a
-   point-in-time feature store with archived raw snapshots (no leakage).
-6. Re-fit `calibrate.py` as the live record grows; swap `backtest.py`'s climatology
-   baseline for a true market baseline once a historical odds source is in place.
+| Experiment (flag) | 1X2 log loss | Verdict |
+|---|---|---|
+| baseline | **0.847** | — |
+| Elo covariate (`--elo`, `elo.py`) | 0.848 | flat — Elo is a re-encoding of results the model already fits |
+| Elo prior (`--elo-prior`) | 0.853 | worse |
+| Squad-value prior (`--squad-prior`, `squad.py`) | 0.865 | worst — free Transfermarkt value is sparse/misaligned for the minnows it's meant to help |
+| Context: rest/travel/climate (`--context`, `context.py`) | 0.849 | flat — effects are real but tiny (travel coef ≈6% of home-adv for a full-SD trip) |
+
+**Conclusion: the model is at the accuracy ceiling its free data allows.** The failures
+weren't an architecture problem (a tree/regression can't extract signal a feature doesn't
+carry) — Elo/squad are redundant with results, and genuinely-independent context
+(rest/travel) has only a tiny effect on international match outcomes (a low-scoring,
+high-variance sport with large irreducible uncertainty). 60% accuracy / ECE 0.013 is
+near the soccer-1X2 ceiling pro models also hit. The experiment modules are kept as
+documented, off-by-default reference.
+
+**The one lever not pursued** (ruled out as paid): clean per-match lineups/injuries
+(e.g. API-Football, ~$19/mo) for an exact squad-quality feature — the only realistic path
+to *new* information, and even that is an uncertain bet. Other ideas if ever revisited:
+Poisson-lognormal in place of the DC ρ correction (a draw-*calibration* change, not an
+accuracy one — the model already over-predicts draws); a market-anchored 1X2 layer
+(a CLV project, not accuracy); per-team strength uncertainty for honest bet sizing.

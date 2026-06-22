@@ -51,7 +51,8 @@ def log_cmd(args) -> None:
     for l in legs:
         ticket_odds *= float(l["odds"])
     df = _read()
-    tid = f"{args.date}#{int(df.shape[0])}"
+    # unique per date even if rows get hand-edited (count distinct tickets, not rows)
+    tid = f"{args.date}#{0 if df.empty else df['ticket_id'].nunique()}"
     rows = []
     for i, l in enumerate(legs, 1):
         rows.append({
