@@ -14,7 +14,7 @@ $report = Join-Path $logDir "refresh_$stamp.txt"
 python src/download_data.py --force 2>&1 | Out-File $report -Append -Encoding utf8
 # prediction tracker: lock upcoming predictions (pre-kickoff) and grade played games
 python src/track.py freeze          2>&1 | Out-File $report -Append -Encoding utf8
-python src/track.py grade           2>&1 | Out-File $report -Append -Encoding utf8
+python src/track.py grade --live    2>&1 | Out-File $report -Append -Encoding utf8
 python src/track.py report          2>&1 | Out-File $report -Append -Encoding utf8
 # betting/CLV (optional, secondary)
 python src/slate.py grade           2>&1 | Out-File $report -Append -Encoding utf8

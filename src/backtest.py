@@ -111,7 +111,8 @@ def climatology(df_train: pd.DataFrame) -> dict:
 # ---- backtest driver -----------------------------------------------------
 def run(test_start: str, test_end: str, refit_days: int, competitive_only: bool,
         half_life: float, min_matches: int,
-        totals_calib: tuple[float, float] | None = None) -> dict:
+        totals_calib: tuple[float, float] | None = None, use_elo: bool = False,
+        elo_prior: bool = False, elo_prior_lambda: float = 5.0) -> dict:
     """Walk-forward backtest. If `totals_calib` (Platt a, b) is given, the O/U
     market is also scored with the recalibration so raw vs. calibrated can be
     compared in a single pass."""
@@ -144,7 +145,9 @@ def run(test_start: str, test_end: str, refit_days: int, competitive_only: bool,
         # refit whenever we've crossed the next boundary; always fit strictly before d
         while d > next_refit:
             as_of = next_refit.date()
-            model = DixonColes(half_life_days=half_life, min_matches=min_matches).fit(df, as_of=as_of)
+            model = DixonColes(half_life_days=half_life, min_matches=min_matches,
+                               use_elo=use_elo, elo_prior=elo_prior,
+                               elo_prior_lambda=elo_prior_lambda).fit(df, as_of=as_of)
             if has_cal:
                 model.totals_calib = totals_calib
             fit_count += 1
@@ -318,12 +321,19 @@ def main() -> None:
                         "calibrated. Get fitted values from `python src/calibrate.py`.")
     p.add_argument("--half-life", type=float, default=730.0)
     p.add_argument("--min-matches", type=int, default=8)
+    p.add_argument("--elo", action="store_true",
+                   help="add the point-in-time Elo covariate to the goal rates")
+    p.add_argument("--elo-prior", action="store_true",
+                   help="shrink each team's net strength toward its Elo rating (prior)")
+    p.add_argument("--elo-lambda", type=float, default=5.0,
+                   help="strength of the Elo-prior shrinkage (default 5)")
     p.add_argument("--no-plot", action="store_true")
     args = p.parse_args()
 
     calib = tuple(args.totals_calib) if args.totals_calib else None
     out = run(args.test_start, args.test_end, args.refit_days, args.competitive_only,
-              args.half_life, args.min_matches, calib)
+              args.half_life, args.min_matches, calib, use_elo=args.elo,
+              elo_prior=args.elo_prior, elo_prior_lambda=args.elo_lambda)
     print_report(out)
     if not args.no_plot and out["summary"]["n_scored"]:
         save_plot(out, OUT_DIR / "calibration.png")

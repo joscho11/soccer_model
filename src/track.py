@@ -110,6 +110,38 @@ def freeze_cmd(args) -> None:
           f"total tracked: {len(df)} ({int((df['result'] == 'pending').sum())} pending).")
 
 
+def _live_scores(teams: list[str]) -> dict:
+    """Completed scores from The Odds API scores endpoint (best-effort, ~2 credits),
+    keyed by (home, away) in dataset names. Lets the tracker grade games before the
+    martj42 dataset (which lags a day or two) has ingested them. {} if no key / fails."""
+    try:
+        import os
+        import odds  # lazy: odds imports predict/markets; avoid an import cycle
+        odds.load_dotenv()
+        if not os.environ.get("ODDS_API_KEY"):
+            return {}
+        sport = odds.discover_wc_key()
+        if not sport:
+            return {}
+        data, _ = odds.api_get(f"/sports/{sport}/scores/", daysFrom=3, dateFormat="iso")
+        cache: dict = {}
+        out: dict = {}
+        for e in data:
+            if not e.get("completed"):
+                continue
+            sc = {s["name"]: s["score"] for s in (e.get("scores") or [])}
+            if e["home_team"] not in sc or e["away_team"] not in sc:
+                continue
+            h = odds.normalize(e["home_team"], teams, cache)
+            a = odds.normalize(e["away_team"], teams, cache)
+            if h is None or a is None:
+                continue
+            out[(h, a)] = (int(sc[e["home_team"]]), int(sc[e["away_team"]]))
+        return out
+    except (Exception, SystemExit):
+        return {}
+
+
 def grade_cmd(args) -> None:
     df = _read()
     if df.empty:
@@ -117,11 +149,18 @@ def grade_cmd(args) -> None:
         return
     results = load_results()
     results["date"] = pd.to_datetime(results["date"])
-    played = results.dropna(subset=["home_score", "away_score"]).copy()
-    played["key"] = (played["home_team"] + "|" + played["away_team"] + "|"
-                     + played["date"].dt.strftime("%Y-%m-%d"))
-    score = {k: (int(h), int(a)) for k, h, a in
-             zip(played["key"], played["home_score"], played["away_score"])}
+    played = results.dropna(subset=["home_score", "away_score"])
+    # key on (home, away) — within one tournament a pairing is unique, and this is
+    # robust to date discrepancies between the fixture list and the score source.
+    pair_score = {(h, a): (int(hs), int(as_)) for h, a, hs, as_ in
+                  zip(played["home_team"], played["away_team"],
+                      played["home_score"], played["away_score"])}
+    src = "dataset"
+    if getattr(args, "live", False):
+        live = _live_scores(load_model().teams)
+        pair_score.update(live)   # live Odds API scores fill games the dataset still lags
+        if live:
+            src = f"dataset + {len(live)} live"
 
     # ensure the columns we fill are object dtype so writing ints/strings into cells
     # CSV-loaded as float/NaN doesn't trip pandas' incompatible-dtype warning
@@ -129,14 +168,25 @@ def grade_cmd(args) -> None:
             "score_correct", "ou_correct", "btts_correct", "result"]
     df[fill] = df[fill].astype(object)
 
+    # invariant: a prediction dated in the future cannot be settled. Guards against a
+    # mismatched/stale score grading a game that hasn't happened yet; reset any such row.
+    today = pd.Timestamp(date.today())
+    future = (pd.to_datetime(df["date"]) > today) & (df["result"] == "graded")
+    if future.any():
+        df.loc[future, fill[:-1]] = ""
+        df.loc[future, "result"] = "pending"
+        print(f"reset {int(future.sum())} future-dated row(s) graded off mismatched scores.")
+
     graded = 0
     for i, r in df.iterrows():
         if str(r["result"]) != "pending":
             continue
-        key = f"{r['home_team']}|{r['away_team']}|{r['date']}"
-        if key not in score:
+        if pd.Timestamp(r["date"]) > today:        # don't settle games that haven't happened
             continue
-        hs, as_ = score[key]
+        key = (r["home_team"], r["away_team"])
+        if key not in pair_score:
+            continue
+        hs, as_ = pair_score[key]
         total = hs + as_
         ao = "home" if hs > as_ else ("draw" if hs == as_ else "away")
         df.at[i, "actual_home"] = hs
@@ -149,8 +199,8 @@ def grade_cmd(args) -> None:
         df.at[i, "result"] = "graded"
         graded += 1
     _write(df)
-    print(f"graded {graded}; {int((df['result'] == 'pending').sum())} still pending "
-          f"(game not played / not in data).")
+    print(f"graded {graded} ({src}); {int((df['result'] == 'pending').sum())} still "
+          f"pending (game not played / not in data).")
 
 
 def report_cmd(args) -> None:
@@ -200,7 +250,11 @@ def main() -> None:
     fz.add_argument("--date", help="freeze a single date YYYY-MM-DD instead of the window")
     fz.set_defaults(func=freeze_cmd)
 
-    sub.add_parser("grade", help="fill actuals + correctness from played games").set_defaults(func=grade_cmd)
+    gr = sub.add_parser("grade", help="fill actuals + correctness from played games")
+    gr.add_argument("--live", action="store_true",
+                    help="also pull completed scores from The Odds API (~2 credits) "
+                         "when the dataset still lags")
+    gr.set_defaults(func=grade_cmd)
     sub.add_parser("report", help="accuracy scoreboard").set_defaults(func=report_cmd)
 
     args = p.parse_args()

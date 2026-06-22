@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+import elo
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 # Relative weight of a match by competition. Tournament knockouts/finals are the
@@ -87,6 +89,21 @@ class DixonColes:
     fitted_on: str = ""
     n_matches: int = 0
 
+    # Optional point-in-time Elo covariate (off by default; an opt-in experiment judged
+    # by backtest.py). When on, the log goal-rates get a +/- gamma*(elo_diff/400) term,
+    # so a single global coefficient pools strength info across all teams — most useful
+    # for thin-data teams the per-team attack/defence can't pin down.
+    use_elo: bool = False
+    elo_gamma: float = 0.0
+    elo_ratings: dict[str, float] = field(default_factory=dict)
+    # Elo-as-PRIOR (the follow-up experiment): instead of a parallel covariate, add an
+    # L2 penalty pulling each team's net strength (attack-defence) toward its Elo rating.
+    # Because a thin-data team's likelihood barely constrains its params, the prior
+    # dominates *for them* — adaptive shrinkage that targets the documented weakness
+    # (strong/low-data teams shrunk to the mean) without disturbing well-sampled teams.
+    elo_prior: bool = False
+    elo_prior_lambda: float = 5.0
+
     # ---- data prep -------------------------------------------------------
     def _prepare(self, df: pd.DataFrame, as_of: date) -> pd.DataFrame:
         df = df.copy()
@@ -113,6 +130,8 @@ class DixonColes:
     # ---- fit -------------------------------------------------------------
     def fit(self, df: pd.DataFrame, as_of: date | None = None) -> "DixonColes":
         as_of = as_of or date.today()
+        if self.use_elo or self.elo_prior:     # point-in-time ratings as of `as_of`
+            df, self.elo_ratings = elo.attach(df, as_of)
         data = self._prepare(df, as_of)
         if data.empty:
             raise ValueError("No matches left after filtering; loosen train_since/min_matches.")
@@ -127,33 +146,54 @@ class DixonColes:
         as_ = data["away_score"].to_numpy()
         w = data["weight"].to_numpy()
         non_neutral = (~data["neutral"]).to_numpy().astype(float)
+        if self.use_elo:
+            ep = data[["home_elo_pre", "away_elo_pre"]].fillna(elo.START_RATING)
+            elo_diff = (ep["home_elo_pre"] - ep["away_elo_pre"]).to_numpy() / 400.0
+        else:
+            elo_diff = np.zeros(len(data))
+        if self.elo_prior:                     # standardised per-team Elo strength target
+            ev = np.array([self.elo_ratings.get(t, elo.START_RATING) for t in teams])
+            elo_z = (ev - ev.mean()) / (ev.std() + 1e-9)
+        else:
+            elo_z = None
 
-        # params: [attack(n), defence(n), home_adv, rho]
+        # params: [attack(n), defence(n), home_adv, rho, (extra: gamma if use_elo / beta if elo_prior)]
+        has_extra = self.use_elo or self.elo_prior
+
         def unpack(p):
-            return p[:n], p[n:2 * n], p[2 * n], p[2 * n + 1]
+            extra = p[2 * n + 2] if has_extra else 0.0
+            return p[:n], p[n:2 * n], p[2 * n], p[2 * n + 1], extra
 
         def neg_log_lik(p):
-            atk, dfc, home, rho = unpack(p)
-            log_lam_h = atk[hi] + dfc[ai] + home * non_neutral
-            log_lam_a = atk[ai] + dfc[hi]
+            atk, dfc, home, rho, extra = unpack(p)
+            gamma = extra if self.use_elo else 0.0
+            log_lam_h = atk[hi] + dfc[ai] + home * non_neutral + gamma * elo_diff
+            log_lam_a = atk[ai] + dfc[hi] - gamma * elo_diff
             lam_h = np.exp(log_lam_h)
             lam_a = np.exp(log_lam_a)
             tau = _tau(hs, as_, lam_h, lam_a, rho)
             tau = np.clip(tau, 1e-9, None)  # guard against negative tau
             ll = np.log(tau) + (hs * log_lam_h - lam_h) + (as_ * log_lam_a - lam_a)
             penalty = 100.0 * atk.sum() ** 2  # identifiability: mean attack ~ 0
+            if self.elo_prior:                # shrink net strength toward beta*elo_z
+                penalty += self.elo_prior_lambda * np.sum((atk - dfc - extra * elo_z) ** 2)
             return -(w * ll).sum() + penalty
 
-        x0 = np.concatenate([np.zeros(n), np.zeros(n), [0.25], [0.0]])
+        parts = [np.zeros(n), np.zeros(n), np.array([0.25]), np.array([0.0])]
         bounds = [(-3, 3)] * n + [(-3, 3)] * n + [(-1, 1), (-0.2, 0.2)]
-        res = minimize(neg_log_lik, x0, method="L-BFGS-B", bounds=bounds,
-                       options={"maxiter": 500, "maxfun": 100000})
+        if has_extra:
+            parts.append(np.array([0.0]))
+            bounds.append((-3, 3))            # gamma (covariate) or beta (prior)
+        res = minimize(neg_log_lik, np.concatenate(parts), method="L-BFGS-B",
+                       bounds=bounds, options={"maxiter": 500, "maxfun": 100000})
 
-        atk, dfc, home, rho = unpack(res.x)
+        atk, dfc, home, rho, extra = unpack(res.x)
         self.attack = {t: float(atk[i]) for t, i in idx.items()}
         self.defence = {t: float(dfc[i]) for t, i in idx.items()}
         self.home_adv = float(home)
         self.rho = float(rho)
+        if self.use_elo:
+            self.elo_gamma = float(extra)     # prior's beta isn't needed at predict time
         self.teams = teams
         self.fitted_on = str(as_of)
         self.n_matches = len(data)
@@ -168,9 +208,14 @@ class DixonColes:
                 raise KeyError(f"Unknown / insufficiently-sampled team: {t!r}. "
                                f"Try `list_teams` to see what's available.")
         h = 1.0 if not neutral else 0.0
-        lam_h = np.exp(self.attack[home] + self.defence[away] + self.home_adv * h)
-        lam_a = np.exp(self.attack[away] + self.defence[home])
-        return float(lam_h), float(lam_a)
+        base_h = self.attack[home] + self.defence[away] + self.home_adv * h
+        base_a = self.attack[away] + self.defence[home]
+        if self.use_elo and self.elo_gamma:
+            d = (self.elo_ratings.get(home, elo.START_RATING)
+                 - self.elo_ratings.get(away, elo.START_RATING)) / 400.0
+            base_h += self.elo_gamma * d
+            base_a -= self.elo_gamma * d
+        return float(np.exp(base_h)), float(np.exp(base_a))
 
     def over_prob(self, home: str, away: str, neutral: bool = True,
                   line: float = 2.5, calibrated: bool = True) -> float:

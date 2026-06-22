@@ -109,6 +109,50 @@ def test_line_key_matches_logged_lines():
     assert _line_key("ah_home", -1.0) == "-1.0"
 
 
+def test_challenge_parlay_grades_and_pays():
+    import tempfile, json
+    from pathlib import Path
+    from types import SimpleNamespace
+    import challenge
+    orig_log, orig_scores = challenge.LOG, challenge._scores
+    try:
+        challenge.LOG = Path(tempfile.mkdtemp()) / "challenge_log.csv"
+        legs = [{"home": "France", "away": "Iraq", "market": "ah_away", "line": 2.5, "odds": 2.0},
+                {"home": "Argentina", "away": "Austria", "market": "under", "line": 2.5, "odds": 1.5}]
+        challenge.log_cmd(SimpleNamespace(date="2026-06-22", stake=25.0, legs=json.dumps(legs)))
+        # France 2-0: Iraq +2.5 -> (0-2)+2.5 = +0.5 win. Argentina 1-0: total 1 < 2.5 under win.
+        challenge._scores = lambda use_live: {("France", "Iraq"): (2, 0),
+                                              ("Argentina", "Austria"): (1, 0)}
+        challenge.grade_cmd(SimpleNamespace(no_live=True))
+        df = challenge._read()
+        assert (df["ticket_result"] == "win").all()
+        assert abs(float(df["payout"].iloc[0]) - 25 * 2.0 * 1.5) < 1e-6   # both legs win -> 3x
+    finally:
+        challenge.LOG, challenge._scores = orig_log, orig_scores
+
+
+def test_elo_is_point_in_time_and_orders_strength():
+    import elo
+    rows = [
+        ("2024-01-01", "Strong", "Weak", 3, 0, "FIFA World Cup", True),
+        ("2024-02-01", "Strong", "Weak", 2, 0, "FIFA World Cup", True),
+        ("2024-03-01", "Weak", "Strong", 0, 1, "FIFA World Cup", True),
+        ("2030-01-01", "Strong", "Weak", None, None, "FIFA World Cup", True),  # future/unplayed
+    ]
+    df = pd.DataFrame(rows, columns=["date", "home_team", "away_team",
+                                     "home_score", "away_score", "tournament", "neutral"])
+    out, ratings = elo.attach(df, as_of="2024-06-01")
+    # first match: both teams start at the default, so pre-match ratings are equal
+    first = out.sort_values("date").iloc[0]
+    assert first["home_elo_pre"] == first["away_elo_pre"] == elo.START_RATING
+    # after winning, Strong outrates Weak
+    assert ratings["Strong"] > ratings["Weak"]
+    # zero-sum: ratings stay centred on the start value
+    assert abs((ratings["Strong"] + ratings["Weak"]) - 2 * elo.START_RATING) < 1e-6
+    # point-in-time: the unplayed 2030 fixture never gets a pre-match rating
+    assert out[out["date"] == "2030-01-01"]["home_elo_pre"].isna().all()
+
+
 def test_track_grades_against_actual():
     # grade_cmd should fill actual result + per-market correctness for a played game.
     # Hermetic: temp PRED_PATH + stubbed load_results (no disk / network).

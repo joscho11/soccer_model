@@ -1,0 +1,3 @@
+date,ticket_id,leg,home,away,market,line,odds,model_prob,stake,ticket_odds,leg_result,ticket_result,payout
+2026-06-22,2026-06-22#0,1,France,Iraq,ah_away,2.5,2.21,0.68,25.0,4.265,pending,pending,
+2026-06-22,2026-06-22#0,2,Argentina,Austria,under,2.5,1.93,0.59,25.0,4.265,pending,pending,
