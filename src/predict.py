@@ -233,7 +233,7 @@ def day_cmd(args) -> None:
             continue
 
         o = markets.outcome_probs(mat)
-        ou = markets.over_under(mat, 2.5)
+        over25 = m.over_prob(h, a, neutral=neutral, line=2.5, calibrated=True)  # Platt-calibrated
         b = markets.btts(mat)
         score, _ = markets.correct_score(mat, 1)[0]
         names = {"home": f"{h} win", "draw": "Draw", "away": f"{a} win"}
@@ -248,7 +248,7 @@ def day_cmd(args) -> None:
         print(f"  1X2 (context)  {h} {_pct(o['home'])} (fair {markets.fair_odds(o['home'])})"
               f"   Draw {_pct(o['draw'])} (fair {markets.fair_odds(o['draw'])})"
               f"   {a} {_pct(o['away'])} (fair {markets.fair_odds(o['away'])})")
-        print(f"  O/U 2.5           over {_pct(ou['over_2.5'])}   under {_pct(ou['under_2.5'])}")
+        print(f"  O/U 2.5           over {_pct(over25)}   under {_pct(1 - over25)}")
         print(f"  BTTS              yes {_pct(b['btts_yes'])}   no {_pct(b['btts_no'])}")
         print(f"  most likely       {names[best]} ({_pct(o[best])})")
 
