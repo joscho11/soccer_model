@@ -1,5 +1,6 @@
 date,ticket_id,leg,home,away,market,line,odds,model_prob,stake,ticket_odds,leg_result,ticket_result,payout
 2026-06-22,2026-06-22#0,1,France,Iraq,ah_away,2.5,2.21,0.68,25.0,4.265,loss,loss,0.0
 2026-06-22,2026-06-22#0,2,Argentina,Austria,under,2.5,1.93,0.59,25.0,4.265,win,loss,0.0
-2026-06-23,2026-06-23#1,1,England,Ghana,under,2.5,2.35,0.51,25.0,4.535,pending,pending,
-2026-06-23,2026-06-23#1,2,Portugal,Uzbekistan,ah_away,2.0,1.93,0.59,25.0,4.535,pending,pending,
+2026-06-23,2026-06-23#1,1,England,Ghana,under,2.5,2.35,0.51,25.0,4.535,win,loss,0.0
+2026-06-23,2026-06-23#1,2,Portugal,Uzbekistan,ah_away,2.0,1.93,0.59,25.0,4.535,loss,loss,0.0
+2026-06-24,2026-06-24#2,1,Bosnia and Herzegovina,Qatar,draw,,5.2,0.264,25.0,5.2,pending,pending,
