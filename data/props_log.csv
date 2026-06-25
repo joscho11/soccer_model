@@ -1,0 +1,90 @@
+logged_at,model_fitted_on,date,home_team,away_team,neutral,player,model_player,team,model_p,book_odds,book,book_p,edge,closing_odds,scored,result
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Odilon Kossounou,Odilon Kossounou,Ivory Coast,0.0567,11.0,Betfair,0.0909,-0.0342,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Guela Doue,Guela Doué,Ivory Coast,0.0523,8.8,Betfair,0.1136,-0.0613,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Ibrahim Sangare,Ibrahim Sangaré,Ivory Coast,0.0808,5.4,Betfair,0.1852,-0.1044,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Seko Fofana,Seko Fofana,Ivory Coast,0.151,4.6,Betfair,0.2174,-0.0664,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Amad Diallo,Amad Diallo,Ivory Coast,0.1446,2.46,Betfair,0.4065,-0.2619,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Evann Guessand,Evann Guessand,Ivory Coast,0.2089,2.52,Betfair,0.3968,-0.188,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Yan Diomande,Yan Diomandé,Ivory Coast,0.3789,2.9,Betfair,0.3448,0.0341,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Nicolas Pepe,Nicolas Pépé,Ivory Coast,0.3764,2.72,Betfair,0.3676,0.0088,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Emmanuel Agbadou,Emmanuel Agbadou,Ivory Coast,0.0829,9.6,Betfair,0.1042,-0.0213,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Sepe Elye Wahi,Elye Wahi,Ivory Coast,0.3288,2.3,Betfair,0.4348,-0.106,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Simon Adingra,Simon Adingra,Ivory Coast,0.1757,3.05,Betfair,0.3279,-0.1522,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Curaçao,Ivory Coast,True,Bazoumana Toure,Bazoumana Touré,Ivory Coast,0.2071,3.5,Betfair,0.2857,-0.0786,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Piero Hincapie,Piero Hincapié,Ecuador,0.0154,17.0,Sky Bet,0.0588,-0.0434,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Moises Caicedo,Moisés Caicedo,Ecuador,0.0306,18.0,Betfair,0.0556,-0.0249,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Pervis Estupinan,Pervis Estupiñán,Ecuador,0.0387,16.0,Betfair,0.0625,-0.0238,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,David Raum,David Raum,Germany,0.0563,12.0,Betfair,0.0833,-0.027,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Jamal Musiala,Jamal Musiala,Germany,0.3421,3.9,Betfair,0.2564,0.0857,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Forzan Assan Ouedraogo,Assan Ouedraogo,Germany,0.1848,4.4,Betfair,0.2273,-0.0425,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Nadiem Amiri,Nadiem Amiri,Germany,0.1378,4.9,Betfair,0.2041,-0.0662,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Florian Wirtz,Florian Wirtz,Germany,0.1721,3.8,Betfair,0.2632,-0.0911,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Pascal Gross,Pascal Groß,Germany,0.0863,9.4,Betfair,0.1064,-0.0201,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Antonio Rudiger,Antonio Rüdiger,Germany,0.0526,13.0,Sky Bet,0.0769,-0.0243,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Deniz Undav,Deniz Undav,Germany,0.4371,2.72,Betfair,0.3676,0.0695,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Aleksandar Pavlovic,Aleksandar Pavlovic,Germany,0.0507,12.0,Betfair,0.0833,-0.0326,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Leon Goretzka,Leon Goretzka,Germany,0.1001,7.4,Betfair,0.1351,-0.0351,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Jamie Leweling,Jamie Leweling,Germany,0.1575,4.9,Betfair,0.2041,-0.0465,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Jonathan Tah,Jonathan Tah,Germany,0.0242,12.0,Sky Bet,0.0833,-0.0591,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Waldemar Anton,Waldemar Anton,Germany,0.0299,15.5,Betfair,0.0645,-0.0346,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Malick Thiaw,Malick Thiaw,Germany,0.0674,13.0,Betfair,0.0769,-0.0095,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Angelo Stiller,Angelo Stiller,Germany,0.0408,12.0,Betfair,0.0833,-0.0425,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Joshua Kimmich,Joshua Kimmich,Germany,0.0649,7.6,Betfair,0.1316,-0.0666,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Nathaniel Brown,Nathaniel Brown,Germany,0.07,9.2,Betfair,0.1087,-0.0387,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Maximilian Beier,Maximilian Beier,Germany,0.1959,3.9,Betfair,0.2564,-0.0605,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Felix Nmecha,Felix Nmecha,Germany,0.093,7.2,Betfair,0.1389,-0.0459,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Nick Woltemade,Nick Woltemade,Germany,0.0944,2.94,Betfair,0.3401,-0.2457,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Kai Havertz,Kai Havertz,Germany,0.3008,2.72,Betfair,0.3676,-0.0668,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Kendry Paez,Kendry Páez,Ecuador,0.1109,6.0,Betfair,0.1667,-0.0558,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Ecuador,Germany,True,Nico Schlotterbeck,Nico Schlotterbeck,Germany,0.0982,9.5,William Hill,0.1053,-0.007,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Hiroki Ito,Hiroki Ito,Japan,0.0772,13.0,William Hill,0.0769,0.0003,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Kaishu Sano,Kaishu Sano,Japan,0.0785,12.0,Sky Bet,0.0833,-0.0048,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Daichi Kamada,Daichi Kamada,Japan,0.1131,6.2,Betfair,0.1613,-0.0482,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Ao Tanaka,Ao Tanaka,Japan,0.1412,7.0,Betfair,0.1429,-0.0017,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Ritsu Doan,Ritsu Doan,Japan,0.2142,5.6,Betfair,0.1786,0.0356,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Yukinari Sugawara,Yukinari Sugawara,Japan,0.1033,10.0,Sky Bet,0.1,0.0033,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Lucas Bergvall,Lucas Bergvall,Sweden,0.0742,12.0,Betfair,0.0833,-0.0092,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Alexander Isak,Alexander Isak,Sweden,0.2683,3.9,Betfair,0.2564,0.0119,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Yasin Ayari,Yasin Ayari,Sweden,0.1247,9.0,Betfair,0.1111,0.0136,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Jesper Karlstrom,Jesper Karlström,Sweden,0.0382,21.0,William Hill,0.0476,-0.0094,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Isak Hien,Isak Hien,Sweden,0.0261,23.0,Sky Bet,0.0435,-0.0174,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Gabriel Gudmundsson,Gabriel Gudmundsson,Sweden,0.0383,17.0,Sky Bet,0.0588,-0.0205,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Carl Starfelt,Carl Starfelt,Sweden,0.0197,19.0,William Hill,0.0526,-0.0329,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Viktor Gyokeres,Viktor Gyökeres,Sweden,0.2723,3.5,Betfair,0.2857,-0.0134,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Daniel Svensson,Daniel Svensson,Sweden,0.039,17.0,Sky Bet,0.0588,-0.0198,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Hjalmar Ekdal,Hjalmar Ekdal,Sweden,0.0242,19.0,William Hill,0.0526,-0.0284,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Anthony Elanga,Anthony Elanga,Sweden,0.0895,6.4,Betfair,0.1562,-0.0667,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Victor Lindelof,Victor Lindelöf,Sweden,0.0186,23.0,William Hill,0.0435,-0.0249,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Kento Shiogai,Kento Shiogai,Japan,0.2757,3.1,Betfair,0.3226,-0.0468,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Shuto Machino,Shuto Machino,Japan,0.2951,2.75,William Hill,0.3636,-0.0686,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Takefusa Kubo,Takefusa Kubo,Japan,0.1863,3.75,William Hill,0.2667,-0.0804,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Mattias Svanberg,Mattias Svanberg,Sweden,0.147,8.0,Betfair,0.125,0.022,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Eric Smith,Eric Smith,Sweden,0.0306,13.5,Betfair,0.0741,-0.0435,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Junnosuke Suzuki,Yuito Suzuki,Japan,0.2246,11.0,William Hill,0.0909,0.1337,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Japan,Sweden,True,Ayumu Seko,Ayumu Seko,Japan,0.0423,16.0,Betfair,0.0625,-0.0202,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Rani Khedira,Rani Khedira,Tunisia,0.0283,20.0,Betfair,0.05,-0.0217,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Elias Saad,Elias Saad,Tunisia,0.0377,9.6,Betfair,0.1042,-0.0664,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Ali Abdi,Ali Abdi,Tunisia,0.0554,18.0,Betfair,0.0556,-0.0001,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Hannibal Mejbri,Hannibal Mejbri,Tunisia,0.0527,12.0,William Hill,0.0833,-0.0306,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Ellyes Skhiri,Ellyes Skhiri,Tunisia,0.0295,19.0,Sky Bet,0.0526,-0.0231,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Montassar Talbi,Montassar Talbi,Tunisia,0.0218,41.0,Sky Bet,0.0244,-0.0026,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Micky van de Ven,Micky van de Ven,Netherlands,0.0634,8.0,Betfair,0.125,-0.0616,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Denzel Dumfries,Denzel Dumfries,Netherlands,0.2597,5.6,Betfair,0.1786,0.0812,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Cody Gakpo,Cody Gakpo,Netherlands,0.4093,2.04,Betfair,0.4902,-0.0809,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Donyell Malen,Donyell Malen,Netherlands,0.5526,2.12,Betfair,0.4717,0.0809,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Brian Brobbey,Brian Brobbey,Netherlands,0.3186,2.1,Betfair,0.4762,-0.1576,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Tijjani Reijnders,Tijjani Reijnders,Netherlands,0.2828,3.7,Betfair,0.2703,0.0125,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Crysencio Summerville,Crysencio Summerville,Netherlands,0.2525,2.52,Betfair,0.3968,-0.1443,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Virgil van Dijk,Virgil van Dijk,Netherlands,0.0958,5.2,Betfair,0.1923,-0.0965,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Frenkie de Jong,Frenkie de Jong,Netherlands,0.0652,9.0,William Hill,0.1111,-0.0459,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Ryan Gravenberch,Ryan Gravenberch,Netherlands,0.1306,7.0,William Hill,0.1429,-0.0123,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Jan Paul van Hecke,Jan Paul van Hecke,Netherlands,0.0927,8.2,Betfair,0.122,-0.0293,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Justin Kluivert,Justin Kluivert,Netherlands,0.2523,2.98,Betfair,0.3356,-0.0832,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Teun Koopmeiners,Teun Koopmeiners,Netherlands,0.2225,3.4,Betfair,0.2941,-0.0716,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Noa Lang,Noa Lang,Netherlands,0.1752,3.0,Betfair,0.3333,-0.1581,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Mats Wieffer,Mats Wieffer,Netherlands,0.1175,5.8,Betfair,0.1724,-0.0549,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Quinten Timber,Quinten Timber,Netherlands,0.0765,5.0,William Hill,0.2,-0.1235,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Nathan Ake,Nathan Aké,Netherlands,0.1353,8.0,Betfair,0.125,0.0103,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Marten de Roon,Marten de Roon,Netherlands,0.0563,16.0,Betfair,0.0625,-0.0062,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Lutsharel Geertruida,Lutsharel Geertruida,Netherlands,0.0978,7.0,Betfair,0.1429,-0.0451,,,pending
+2026-06-25 14:02,2026-06-24,2026-06-25,Tunisia,Netherlands,True,Jorrel Hato,Jorrel Hato,Netherlands,0.0413,8.5,William Hill,0.1176,-0.0764,,,pending

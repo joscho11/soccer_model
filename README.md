@@ -207,7 +207,7 @@ credits/scan**); each AH line is priced from the score matrix and de-vigged agai
 its paired opposite side. BTTS and player props are event-level only — `btts`
 fetches them per game (1 credit each). **Player props (goalscorer/shots/cards) are
 not modelled here** — the Dixon-Coles model prices team goals, not individual players.
-A separate anytime-goalscorer prototype exists (see *Player props* under Next steps).
+A separate anytime-goalscorer model (`props.py`) handles these (see *Player props* below).
 
 `scan`/`log` auto-discover the World Cup sport key, request **pre-match** games
 only (in-play prices are noise), match each game to the model (alias map + fuzzy
@@ -371,35 +371,71 @@ Poisson-lognormal in place of the DC ρ correction (a draw-*calibration* change,
 accuracy one — the model already over-predicts draws); a market-anchored 1X2 layer
 (a CLV project, not accuracy); per-team strength uncertainty for honest bet sizing.
 
-### Player props — anytime goalscorer (prototype, not yet in `src/`)
+### Player props — anytime goalscorer (`src/props.py`, `src/props_track.py`)
 
 The match-outcome market is provably efficient (a public-data DC model can't beat the WC
 closing line — confirmed on 1,971 historical WC matches). **Player props are the better
 target**: books post them soft, at low limits, across few books — room a model can
-exploit. Prop markets *are* live and bettable on The Odds API for `soccer_fifa_world_cup`
-(`player_goal_scorer_anytime`, `player_shots`, `player_shots_on_target` — 5 books,
-~6 credits/event via the event-odds endpoint).
+exploit. They *are* live and bettable on The Odds API for `soccer_fifa_world_cup`
+(`player_goal_scorer_anytime` and friends — uk/eu books, ~2 credits/event for goalscorer).
 
-A working prototype lives in `c:\tmp` (not committed): it builds a per-player
-anytime-goalscorer model and merges it against live book prices to surface edges.
-Two data sources were tried:
-- **StatsBomb open data** (free, GitHub — WC 2018/2022, Euro 2024) gives per-shot xG but
-  only ~8 international appearances per player: far too thin to estimate a shot rate.
-- **Club shot data** (FBref top-5 leagues 2025/26, via a Kaggle mirror) gives 20-35 club
-  matches per player — stable rates. **This is the spine.** The model anchors each
-  player's club goals/90 to the team's expected goals for *this* match (from the DC
-  `lambdas`, which already encode opponent + venue), then Poisson → P(scores ≥1). The
-  book's player list conveniently filters to the actual squad.
+`props.py` prices each player's **P(anytime goalscorer)** for a fixture from three parts:
 
-Result: the club-data model **tracks the market closely** on the players it covers
-(30/46 priced players, most within a few pp) — a sane baseline, not the ±25pp noise the
-international-only version produced. But the visible "edges" aren't bankable yet:
-1. **Add xG** for shot quality (the FBref mirror lacks it; the stars get underrated). Pull
-   an Understat-derived Kaggle set — Understat itself is now JS-gated, FBref 403s urllib,
-   but the Kaggle bearer-token download works.
-2. **Lineups/minutes** — the biggest error source is assuming who starts and for how long.
-3. **Coverage beyond top-5** — real starters who left for Turkey/Saudi/MLS (Enner Valencia,
-   Sané) drop out.
-4. **Forward-tracking is the only validation** — historical prop *odds* aren't free, so
-   log model picks vs actual goalscorers daily (mirror `track.py`) and let hit-rate/CLV
-   accumulate. Do this regardless; it's the only thing that can prove or kill the edge.
+- **Shot volume + role** — current-season club data (FBref top-5 leagues 2025/26): shots
+  per 90 and an expected-minutes prior.
+- **Shot quality** — Understat expected-goals history (xG per shot over the last three
+  seasons, shrunk to the league average). This is the fix for elite finishers being
+  underrated by raw conversion; a goal-based conversion is the fallback for players with no
+  Understat history.
+- **Match context** — the DC team `lambda` for *this* fixture (opponent + venue), which
+  scales the player's baseline up against weak defences and down against strong.
+
+`lambda_player = shots90 · xg_per_shot · (exp_min/90) · opp_scale · INTL_FACTOR`, then
+Poisson → `P(scores ≥ 1)`. The book's player list filters to the actual squad.
+
+```
+python src/download_props_data.py                          # build the two inputs (Kaggle)
+python src/props.py table Ecuador Germany --neutral        # model goalscorer board
+python src/props.py compare event.json Ecuador Germany     # vs saved book prices
+```
+
+**Projected minutes via lineups.** Expected minutes are the single biggest error source, so
+the model takes an optional lineup file — `{team: {"starters": [...], "bench": [...]}}` — and
+sets minutes from the named XI (confirmed starters `STARTER_MIN`, named subs `SUB_MIN`,
+everyone else dropped as not playing). This both fixes the minutes assumption *and* lets the
+model react to team news faster than soft books reprice — the most realistic edge. Names are
+fuzzy-matched (last name / accents / `ß`→`ss` are fine); any confirmed starter the model
+can't price (not top-5-league) is reported as a coverage gap, never silently dropped.
+
+```
+python src/props.py template Germany Ecuador > xi.json     # seed an editable XI skeleton
+python src/props.py table Germany Ecuador --lineup xi.json  # minutes from the named XI
+```
+
+**Forward validation (`props_track.py`).** There is no free historical prop-*odds* dataset,
+so the goalscorer model **cannot be backtested** — the only honest test is forward. `freeze`
+locks the model probability and the best book price for every player before kickoff; `close`
+snapshots the closing price near kickoff (CLV); `grade` fills who actually scored (from
+`goalscorers.csv` — penalties count toward a goalscorer, own goals don't); `report` shows
+calibration (when the model says 30%, do ~30% score?) and whether the players it rates
+*above* the book's price actually score more than the price implies. The record lives in
+git-tracked `data/props_log.csv`.
+
+```
+python src/props_track.py freeze --date 2026-06-26   # pull + lock a slate (uk books)
+python src/props_track.py close  --date 2026-06-26   # near kickoff: snapshot closing lines
+python src/props_track.py grade                      # after games: who scored
+python src/props_track.py report                     # calibration + edge scoreboard
+```
+
+Honest state: with xG wired in, the model **tracks the market closely** on the players it
+covers (e.g. Havertz, once ~15pp underrated by goal-based conversion, now within ~4pp of the
+book) — a sane baseline, not free money. The remaining levers, in priority:
+
+1. **Feed confirmed XIs each matchday** — the lineup override exists (above); the remaining
+   work is operational: enter team news ~1h pre-kickoff for the games you're pricing (or wire
+   a free team-news source) and pass `--lineup` to `props.py` / `props_track.py freeze`.
+2. **Coverage beyond top-5** — real starters who left for Turkey/Saudi/MLS (Enner Valencia,
+   Sané) have no club-shot profile and drop out; a fallback rate for them would help.
+3. **Forward-tracking** is the only thing that can prove or kill the edge — log daily through
+   the tournament and let calibration / CLV accumulate.
