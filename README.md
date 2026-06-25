@@ -206,8 +206,8 @@ totals + **spreads (Asian handicap)** come from the cheap bulk endpoint (**3
 credits/scan**); each AH line is priced from the score matrix and de-vigged against
 its paired opposite side. BTTS and player props are event-level only — `btts`
 fetches them per game (1 credit each). **Player props (goalscorer/shots/cards) are
-not modelled** — the Dixon-Coles model prices team goals, not individual players (a
-future build off `goalscorers.csv`).
+not modelled here** — the Dixon-Coles model prices team goals, not individual players.
+A separate anytime-goalscorer prototype exists (see *Player props* under Next steps).
 
 `scan`/`log` auto-discover the World Cup sport key, request **pre-match** games
 only (in-play prices are noise), match each game to the model (alias map + fuzzy
@@ -370,3 +370,36 @@ to *new* information, and even that is an uncertain bet. Other ideas if ever rev
 Poisson-lognormal in place of the DC ρ correction (a draw-*calibration* change, not an
 accuracy one — the model already over-predicts draws); a market-anchored 1X2 layer
 (a CLV project, not accuracy); per-team strength uncertainty for honest bet sizing.
+
+### Player props — anytime goalscorer (prototype, not yet in `src/`)
+
+The match-outcome market is provably efficient (a public-data DC model can't beat the WC
+closing line — confirmed on 1,971 historical WC matches). **Player props are the better
+target**: books post them soft, at low limits, across few books — room a model can
+exploit. Prop markets *are* live and bettable on The Odds API for `soccer_fifa_world_cup`
+(`player_goal_scorer_anytime`, `player_shots`, `player_shots_on_target` — 5 books,
+~6 credits/event via the event-odds endpoint).
+
+A working prototype lives in `c:\tmp` (not committed): it builds a per-player
+anytime-goalscorer model and merges it against live book prices to surface edges.
+Two data sources were tried:
+- **StatsBomb open data** (free, GitHub — WC 2018/2022, Euro 2024) gives per-shot xG but
+  only ~8 international appearances per player: far too thin to estimate a shot rate.
+- **Club shot data** (FBref top-5 leagues 2025/26, via a Kaggle mirror) gives 20-35 club
+  matches per player — stable rates. **This is the spine.** The model anchors each
+  player's club goals/90 to the team's expected goals for *this* match (from the DC
+  `lambdas`, which already encode opponent + venue), then Poisson → P(scores ≥1). The
+  book's player list conveniently filters to the actual squad.
+
+Result: the club-data model **tracks the market closely** on the players it covers
+(30/46 priced players, most within a few pp) — a sane baseline, not the ±25pp noise the
+international-only version produced. But the visible "edges" aren't bankable yet:
+1. **Add xG** for shot quality (the FBref mirror lacks it; the stars get underrated). Pull
+   an Understat-derived Kaggle set — Understat itself is now JS-gated, FBref 403s urllib,
+   but the Kaggle bearer-token download works.
+2. **Lineups/minutes** — the biggest error source is assuming who starts and for how long.
+3. **Coverage beyond top-5** — real starters who left for Turkey/Saudi/MLS (Enner Valencia,
+   Sané) drop out.
+4. **Forward-tracking is the only validation** — historical prop *odds* aren't free, so
+   log model picks vs actual goalscorers daily (mirror `track.py`) and let hit-rate/CLV
+   accumulate. Do this regardless; it's the only thing that can prove or kill the edge.
